@@ -1,7 +1,7 @@
-import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
+
 import twilio from "twilio";
 import User from "../models/user.model.js";
+import { generateToken } from "../utils/generateToken.js";
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
@@ -65,8 +65,8 @@ export const verifyOtp = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    const token = generateToken(user);
-
+    const token = await generateToken(user);
+    console.log("Generated Token:", token);
     return res.json({
       success: true,
       guest: false,
