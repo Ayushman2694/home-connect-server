@@ -3,12 +3,12 @@ import User from "../models/user.model.js";
 
 export const createUser = async (req, res) => {
   try {
-    const { phone, fullName, profilePic } = req.body;
+    const { phone } = req.body;
 
-    if (!phone || !fullName) {
+    if (!phone) {
       return res
         .status(400)
-        .json({ success: false, error: "Phone and full name are required" });
+        .json({ success: false, error: "Phone is required" });
     }
 
     // Check if user already exists
@@ -22,10 +22,6 @@ export const createUser = async (req, res) => {
     // Create new user
     const user = new User({
       phone,
-      fullName,
-      profilePic: profilePic || "",
-      roles: { resident: true },
-      isAddressVerified: false,
       lastLogin: new Date(),
     });
 
@@ -36,10 +32,6 @@ export const createUser = async (req, res) => {
       user: {
         id: String(user._id),
         phone: user.phone,
-        fullName: user.fullName,
-        profilePic: user.profilePic,
-        isAddressVerified: user.isAddressVerified,
-        roles: user.roles,
       },
     });
   } catch (error) {
@@ -50,3 +42,23 @@ export const createUser = async (req, res) => {
     });
   }
 };
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({});
+    res.json({
+      success: true,
+      users: users.map(user => ({
+        id: String(user._id),
+        phone: user.phone,
+      })),
+    });
+  } catch (error) {
+    console.error("Error in getAllUsers:", error);
+    res.status(500).json({
+      success: false,
+      error: `Error in getAllUsers controller: ${error.message}`,
+    });
+  }
+};
+
