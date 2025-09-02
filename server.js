@@ -2,8 +2,8 @@ import express from "express";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import twilio from "twilio";
-import sendOtpHandler from "./api/auth/send-otp.ts";
-import verifyOtpHandler from "./api/auth/verify-otp.ts";
+import sendOtpHandler from "./api/auth/send-otp.js";
+import verifyOtpHandler from "./api/auth/verify-otp.js";
 
 dotenv.config();
 
