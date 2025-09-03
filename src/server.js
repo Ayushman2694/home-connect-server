@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import connectDB from "./database/db.js";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import requestRoutes from "./routes/request.routes.js";
 
 dotenv.config();
 
@@ -13,6 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 //auth routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/requests", requestRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();
