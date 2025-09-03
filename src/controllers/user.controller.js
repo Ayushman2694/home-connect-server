@@ -1,3 +1,4 @@
+import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 
 
@@ -60,5 +61,18 @@ export const getAllUsers = async (req, res) => {
       error: `Error in getAllUsers controller: ${error.message}`,
     });
   }
-};
+  };
 
+export const getRequestByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requests = await Request.find({ user: userId }).populate("user");
+    res.json({ success: true, requests });
+  } catch (error) {
+    console.error("Error in getRequestByUserId:", error);
+    res.status(500).json({
+      success: false,
+      error: `Error in getRequestByUserId controller: ${error.message}`,
+    });
+  }
+};
