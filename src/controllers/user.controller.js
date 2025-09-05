@@ -1,48 +1,46 @@
 import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 
-
 export const createUser = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { name, phone, roles, profile_photo_url, resident_info, business_info } = req.body;
 
+    // phone is mandatory for OTP-based login
     if (!phone) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Phone is required" });
+      return res.status(400).json({ message: "Phone number is required" });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ phone });
+    // check if user already exists
+    let existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res
-        .status(400)
-        .json({ success: false, error: "User already exists" });
+      return res.status(200).json({ 
+        message: "User already exists", 
+        user: existingUser 
+      });
     }
 
-    // Create new user
-    const user = new User({
+    // create new user
+    const newUser = new User({
+      name,
       phone,
-      lastLogin: new Date(),
+      roles: roles && roles.length ? roles : ["guest"], // default role guest
+      profile_photo_url,
+      resident_info,
+      business_info,
     });
 
-    await user.save();
+    await newUser.save();
 
-    res.status(201).json({
-      success: true,
-      user: {
-        id: String(user._id),
-        phone: user.phone,
-      },
+    return res.status(201).json({
+      message: "User created successfully",
+      user: newUser,
     });
   } catch (error) {
-    console.error("Error in createUser:", error);
-    res.status(500).json({
-      success: false,
-      error: `Error in createUser controller: ${error.message}`,
-    });
+    console.error("Error in create user controller:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 export const getAllUsers = async (req, res) => {
   try {
