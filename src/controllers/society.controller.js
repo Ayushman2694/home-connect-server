@@ -1,4 +1,5 @@
-import { PincodeData } from "../models/pincode.model.js";
+import { PincodeData } from "../models/pincodeData.model.js";
+import { Society } from "../models/society.model.js";
 
 export const getSocietiesByPincode = async (req, res) => {
   try {
