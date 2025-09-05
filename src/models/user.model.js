@@ -21,7 +21,7 @@ const UserSchema = new mongoose.Schema(
     resident_info: {
       flat_number: String,
       building: String,
-      society_id: { type: Schema.Types.ObjectId, ref: "Society" },
+      society_id: { type: mongoose.Schema.Types.ObjectId, ref: "Society" },
       emergency_contacts: [String],
     },
 
