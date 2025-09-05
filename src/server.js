@@ -4,6 +4,7 @@ import connectDB from "./database/db.js";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import requestRoutes from "./routes/request.routes.js";
+import societyRoutes from "./routes/society.routes.js";
 
 dotenv.config();
 
@@ -15,6 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/requests", requestRoutes);
+app.use("/api/society", societyRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();
