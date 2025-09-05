@@ -1,37 +1,42 @@
 import mongoose from "mongoose";
 
-const userSchema = new mongoose.Schema(
+const UserSchema = new mongoose.Schema(
   {
-    phone: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    fullName: {
-      type: String,
-      default: "", // not required at OTP stage, user may be guest
-      trim: true,
-    },
-    profilePic: {
-      type: String,
-      default: "",
-    },
-    isAddressVerified: {
-      type: Boolean,
-      default: false,
-    },
+    name: { type: String, required: true },
+    phone: { type: String, unique: true, sparse: true },
+
+    // Roles → multiple allowed (resident + business possible)
     roles: {
-      resident: { type: Boolean, default: true },
-      business: { type: Boolean, default: false },
+      type: [String],
+      enum: ["guest", "resident", "business"],
+      default: ["guest"],
     },
-    lastLogin: {
-      type: Date,
-      default: null,
+
+    // Common profile
+    profile_photo_url: String,
+
+    is_Address_verified: { type: Boolean, default: false }, // overall KYC/approval
+
+    // Resident-specific
+    resident_info: {
+      flat_number: String,
+      building: String,
+      society_id: { type: Schema.Types.ObjectId, ref: "Society" },
+      emergency_contacts: [String],
+    },
+
+    // Business-specific
+    business_info: {
+      business_name: String,
+      category: String, // e.g. Grocery, Laundry, Food, etc.
+      description: String,
+      website: String,
+      location: String,
+      gst_number: String,
     },
   },
   { timestamps: true }
 );
 
-const User = mongoose.model("User", userSchema);
-
+const User = mongoose.model("User", UserSchema);
 export default User;
