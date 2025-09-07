@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const UserSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
+    fullName: { type: String },
     phone: { type: String, unique: true, sparse: true },
 
     // Roles → multiple allowed (resident + business possible)
