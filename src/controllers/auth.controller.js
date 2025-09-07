@@ -50,7 +50,7 @@ export const verifyOtp = async (req, res) => {
     }
     // ----- Check if user exists -----
     let user = await User.findOne({ phone: e164 });
-
+    console.log("User found:", user);
     if (!user) {
       // return guest profile
       return res.json({
