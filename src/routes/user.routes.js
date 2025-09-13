@@ -5,6 +5,6 @@ const router = express.Router();
 router.post("/", createUser);
 router.get("/", getAllUsers);
 router.get("/:userId/requests", getRequestByUserId);
-router.patch("/update",updateUser)
+router.patch("/update/:userId",updateUser)
 
 export default router;
