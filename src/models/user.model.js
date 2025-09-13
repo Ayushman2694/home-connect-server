@@ -15,8 +15,8 @@ const UserSchema = new mongoose.Schema(
     // Common profile
     profile_photo_url: String,
 
-    is_Address_verified: { type: Boolean, default: false }, // overall KYC/approval
-
+    is_Address_verified: { type: String, default: "pending" ,enum:["pending","accepted","rejected"]} ,// overall KYC/approval
+    verifyStatus: { type: String, default: "pending" ,enum:["pending","accepted","rejected"]},
     // Resident-specific
     resident_info: {
       flat_number: String,
