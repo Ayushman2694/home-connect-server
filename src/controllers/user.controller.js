@@ -74,3 +74,64 @@ export const getRequestByUserId = async (req, res) => {
     });
   }
 };
+
+export const updateUser = async(req,res)=>{
+  try {
+    const {id} = req.params
+    const updates = req.body;
+
+    // 🔒 Define allowed fields (flat + nested)
+    const allowedFields = [
+      "fullName",
+      "profile_photo_url",
+      "is_Address_verified",
+      "verifyStatus",
+      "roles",
+
+      // Resident-specific
+      "resident_info.flat_number",
+      "resident_info.building",
+      "resident_info.society_id",
+      "resident_info.emergency_contacts",
+
+      // Business-specific
+      "business_info.business_name",
+      "business_info.category",
+      "business_info.description",
+      "business_info.website",
+      "business_info.location",
+      "business_info.gst_number",
+    ];
+
+    const updateData = {};
+
+    // Support nested dot notation: e.g. { "resident_info.flat_number": "A-101" }
+    Object.keys(updates).forEach((key) => {
+      if (allowedFields.includes(key)) {
+        updateData[key] = updates[key];
+      }
+    });
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    const user = await User.findByIdAndUpdate(id, { $set: updateData }, { 
+      new: true, 
+      runValidators: true 
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Update error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+

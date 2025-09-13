@@ -37,29 +37,40 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
-    // const verificationCheck = await client.verify.v2
-    //   .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-    //   .verificationChecks.create({ to: e164, code });
-
-    // if (!verificationCheck || verificationCheck.status !== "approved") {
-    //   return res.status(401).json({ error: "Invalid code" });
-    // }
+    // --- OTP check (currently using master OTP for testing) ---
     const masterOTP = "123456";
-    if(code != masterOTP){
+    if (code != masterOTP) {
       return res.status(400).json({ error: "Invalid code" });
     }
+
     // ----- Check if user exists -----
     let user = await User.findOne({ phone: e164 });
     console.log("User found:", user);
+
     if (!user) {
-      // return guest profile
+      // 🔹 Create new user
+      user = new User({
+        phone: e164,
+        fullName: "", // optional, can be filled later
+        profilePic: null,
+        isAddressVerified: false,
+        roles: ["guest"], // or ["guest"] if you want
+        lastLogin: new Date(),
+      });
+
+      await user.save();
+
+      const token = generateToken(user);
       return res.json({
         success: true,
-        guest: true,
+        token,
         user: {
-          phone: e164,
-          isGuest: true,
-          message: "User not registered. Guest profile returned.",
+          id: String(user._id),
+          phone: user.phone,
+          fullName: user.fullName,
+          profilePic: user.profilePic,
+          isAddressVerified: user.isAddressVerified,
+          roles: user.roles,
         },
       });
     }
@@ -68,11 +79,10 @@ export const verifyOtp = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    const token = await generateToken(user);
+    const token = generateToken(user);
     console.log("Generated Token:", token);
     return res.json({
       success: true,
-      guest: false,
       token,
       user: {
         id: String(user._id),
@@ -85,6 +95,9 @@ export const verifyOtp = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ success: false, error: `error in verifyOtp controller: ${error.message}` });
+    res.status(500).json({
+      success: false,
+      error: `error in verifyOtp controller: ${error.message}`,
+    });
   }
 };
