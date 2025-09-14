@@ -1,28 +1,33 @@
-
 import twilio from "twilio";
 import User from "../models/user.model.js";
 import { generateToken } from "../utils/generateToken.js";
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
-export const sendOtp = async(req, res) => {
-    try {
-        const { phone } = req.body || {};
-        const digits = String(phone || "").replace(/\D/g, "");
-        const e164 = digits.length === 10 ? `+91${digits}` : String(phone || ""); 
-        if (!/^\+\d{10,15}$/.test(e164)) return res.status(400).json({ error: "Invalid phone" });
+export const sendOtp = async (req, res) => {
+  try {
+    const { phone } = req.body || {};
+    const digits = String(phone || "").replace(/\D/g, "");
+    const e164 = digits.length === 10 ? `+91${digits}` : String(phone || "");
+    if (!/^\+\d{10,15}$/.test(e164))
+      return res.status(400).json({ error: "Invalid phone" });
 
+    const verification = await client.verify.v2
+      .services(process.env.TWILIO_VERIFY_SERVICE_SID)
+      .verifications.create({ to: e164, channel: "sms" });
 
-        const verification = await client.verify.v2
-            .services(process.env.TWILIO_VERIFY_SERVICE_SID)
-            .verifications.create({ to: e164, channel: "sms" });
-
-        res.json({ success: true, status: verification.status });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, error: `error in sendOtp controller: ${error.message}` });
-    }
-}
+    res.json({ success: true, status: verification.status });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      error: `error in sendOtp controller: ${error.message}`,
+    });
+  }
+};
 
 export const verifyOtp = async (req, res) => {
   try {
@@ -30,10 +35,7 @@ export const verifyOtp = async (req, res) => {
     const digits = String(phone || "").replace(/\D/g, "");
     const e164 = digits.length === 10 ? `+91${digits}` : String(phone || "");
 
-    if (
-      !/^\+\d{10,15}$/.test(e164) ||
-      !/^\d{4,8}$/.test(String(code || ""))
-    ) {
+    if (!/^\+\d{10,15}$/.test(e164) || !/^\d{4,8}$/.test(String(code || ""))) {
       return res.status(400).json({ error: "Invalid input" });
     }
 
@@ -53,8 +55,9 @@ export const verifyOtp = async (req, res) => {
         phone: e164,
         fullName: "", // optional, can be filled later
         profilePic: null,
-        isAddressVerified: false,
+        isAddressVerified: "pending",
         roles: ["guest"], // or ["guest"] if you want
+        selectedSocietyId: null,
         lastLogin: new Date(),
       });
 
@@ -70,6 +73,7 @@ export const verifyOtp = async (req, res) => {
           fullName: user.fullName,
           profilePic: user.profilePic,
           isAddressVerified: user.isAddressVerified,
+          selectedSocietyId: user.selectedSocietyId,
           roles: user.roles,
         },
       });
@@ -90,6 +94,7 @@ export const verifyOtp = async (req, res) => {
         fullName: user.fullName,
         profilePic: user.profilePic,
         isAddressVerified: user.isAddressVerified,
+        selectedSocietyId: user.selectedSocietyId,
         roles: user.roles,
       },
     });
