@@ -13,7 +13,6 @@ const SocietySchema = new mongoose.Schema({
       residentsCount: { type: Number },
     },
   ],
-  buildings: { type: Number, default: 0 },
   pincode: { type: String, required: true },
   completeAddress: { type: String, default: "" },
   city: { type: String, default: "" },
