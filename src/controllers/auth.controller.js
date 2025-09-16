@@ -47,7 +47,7 @@ export const verifyOtp = async (req, res) => {
 
     // ----- Check if user exists -----
     let user = await User.findOne({ phone: e164 }).populate({
-      path: "selectedSocietyId",
+      path: "societyId",
       select: "-towers -totalFlats -totalResidents",
     });
 
@@ -59,7 +59,7 @@ export const verifyOtp = async (req, res) => {
         profilePic: null,
         isAddressVerified: "pending",
         roles: ["guest"], // or ["guest"] if you want
-        selectedSociety: null,
+        societyId: null,
         lastLogin: new Date(),
       });
 
@@ -75,7 +75,7 @@ export const verifyOtp = async (req, res) => {
           fullName: user.fullName,
           profilePic: user.profilePic,
           isAddressVerified: user.isAddressVerified,
-          selectedSociety: user.selectedSocietyId,
+          societyId: user.societyId,
           roles: user.roles,
         },
       });
@@ -96,7 +96,7 @@ export const verifyOtp = async (req, res) => {
         fullName: user.fullName,
         profilePic: user.profilePic,
         isAddressVerified: user.isAddressVerified,
-        selectedSociety: user.selectedSocietyId,
+        societyId: user.societyId,
         roles: user.roles,
       },
     });
