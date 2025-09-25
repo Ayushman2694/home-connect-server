@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Request from "../models/request.model.js";
 import User, { VERIFICATION_STATUS, USER_ROLES } from "../models/user.model.js";
 import { Society } from "../models/society.model.js";
@@ -9,7 +10,7 @@ export const createUser = async (req, res) => {
     // Use static method from model
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res.status(200).json({
+      return res.status(204).json({
         message: "User already exists",
       });
     }
@@ -88,7 +89,34 @@ export const getRequestByUserId = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const updates = req.body;
+    const {
+      societyId,
+      fullName,
+      flatNumber,
+      roles,
+      phone,
+      profilePhotoUrl,
+      isAddressVerified,
+      ververifyStatus,
+      tower,
+      emergencyContacts,
+      businessId,
+    } = req.body;
+    const updates = { ...req.body };
+    if (updates.societyId) {
+      if (mongoose.Types.ObjectId.isValid(updates.societyId)) {
+        updates.societyId = new mongoose.Types.ObjectId(updates.societyId);
+      } else {
+        return res.status(400).json({ message: "Invalid societyId format" });
+      }
+    }
+    if (updates.businessId) {
+      if (mongoose.Types.ObjectId.isValid(updates.businessId)) {
+        updates.businessId = new mongoose.Types.ObjectId(updates.businessId);
+      } else {
+        return res.status(400).json({ message: "Invalid businessId format" });
+      }
+    }
 
     const user = await User.findByIdAndUpdate(userId, updates, {
       new: true,
@@ -96,22 +124,32 @@ export const updateUser = async (req, res) => {
     }).populate({ path: "societyId", select: "-towers -totalFlats" });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+        status: "failure",
+        code: res.statusCode,
+      });
     }
 
-    return res.status(200).json(user);
+    return res
+      .status(200)
+      .json({ user, status: "success", code: res.statusCode });
   } catch (err) {
     console.error("Update user error:", err);
-    return res.status(400).json({ message: err.message });
+    return res
+      .status(400)
+      .json({ message: err.message, status: "failure", code: res.statusCode });
   }
 };
 
 export const getUserById = async (req, res) => {
   try {
     const { userId } = req.params;
-    const user = await User.findById(userId)
-      .populate({ path: "societyId", select: "-towers -totalFlats" })
-      .populate({ path: "businessId" });
+    const user = await User.findById(userId).populate({
+      path: "societyId",
+      select: "-towers -totalFlats",
+    });
+    // .populate({ path: "businessId" });
 
     if (!user) {
       return res.status(404).json({

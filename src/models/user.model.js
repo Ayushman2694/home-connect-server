@@ -5,6 +5,7 @@ export const USER_ROLES = {
   GUEST: "guest",
   RESIDENT: "resident",
   BUSINESS: "business",
+  ADMIN: "admin",
 };
 
 export const VERIFICATION_STATUS = {
@@ -59,9 +60,12 @@ const UserSchema = new mongoose.Schema(
       },
     },
     isAddressVerified: {
-      type: String,
-      enum: Object.values(VERIFICATION_STATUS),
-      default: VERIFICATION_STATUS.PENDING,
+      status: {
+        type: String,
+        enum: Object.values(VERIFICATION_STATUS),
+        default: VERIFICATION_STATUS.PENDING,
+      },
+      rejectionReason: { type: String, default: null },
     },
     verifyStatus: {
       type: String,

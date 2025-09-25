@@ -1,5 +1,6 @@
 import { PincodeData } from "../models/pincodeData.model.js";
 import { Society } from "../models/society.model.js";
+import User from "../models/user.model.js";
 
 export const getSocietiesByPincode = async (req, res) => {
   try {
@@ -43,5 +44,20 @@ export const getAllSocieties = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error fetching societies", error: error.message });
+  }
+};
+
+export const getTotalResidents = async (req, res) => {
+  try {
+    const registeredResidents = await User.find({
+      "isAddressVerified.status": "accepted",
+      roles: { $in: ["resident"] },
+    }).countDocuments();
+    res.status(200).json({ totalResidents: registeredResidents });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching total residents",
+      error: error.message,
+    });
   }
 };
