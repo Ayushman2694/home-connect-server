@@ -69,15 +69,7 @@ export const verifyOtp = async (req, res) => {
       return res.json({
         success: true,
         token,
-        user: {
-          id: String(user._id),
-          phone: user.phone,
-          fullName: user.fullName,
-          profilePic: user.profilePic,
-          isAddressVerified: user.isAddressVerified,
-          societyId: user.societyId,
-          roles: user.roles,
-        },
+        user,
       });
     }
 
@@ -90,15 +82,7 @@ export const verifyOtp = async (req, res) => {
     return res.json({
       success: true,
       token,
-      user: {
-        id: String(user._id),
-        phone: user.phone,
-        fullName: user.fullName,
-        profilePic: user.profilePic,
-        isAddressVerified: user.isAddressVerified,
-        societyId: user.societyId,
-        roles: user.roles,
-      },
+      user
     });
   } catch (error) {
     console.error(error);
