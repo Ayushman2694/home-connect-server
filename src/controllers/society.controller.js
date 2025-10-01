@@ -50,7 +50,7 @@ export const getAllSocieties = async (req, res) => {
 export const getTotalResidents = async (req, res) => {
   try {
     const registeredResidents = await User.find({
-      "isAddressVerified.status": "accepted",
+      "isAddressVerified.status": "approved",
       roles: { $in: ["resident"] },
     }).countDocuments();
     res.status(200).json({ totalResidents: registeredResidents });

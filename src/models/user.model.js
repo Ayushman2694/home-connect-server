@@ -10,7 +10,7 @@ export const USER_ROLES = {
 
 export const VERIFICATION_STATUS = {
   PENDING: "pending",
-  ACCEPTED: "accepted",
+  APPROVED: "approved",
   REJECTED: "rejected",
 };
 
