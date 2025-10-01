@@ -5,12 +5,20 @@ import { Society } from "../models/society.model.js";
 
 export const createUser = async (req, res) => {
   try {
-    const { name: fullName, phone, roles, profilePhotoUrl } = req.body;
+    const {
+      fullName,
+      phone,
+      roles,
+      profilePhotoUrl,
+      societyId,
+      flatNumber,
+      tower,
+    } = req.body;
 
     // Use static method from model
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res.status(204).json({
+      return res.status(404).json({
         message: "User already exists",
       });
     }
@@ -20,13 +28,19 @@ export const createUser = async (req, res) => {
       phone,
       roles,
       profilePhotoUrl,
+      societyId,
+      flatNumber,
+      tower,
     });
 
     await newUser.save();
 
     return res.status(201).json({
       message: "User created successfully",
-      newUser,
+      newUser: await newUser.populate({
+        path: "societyId",
+        select: "-towers -totalFlats",
+      }),
     });
   } catch (error) {
     console.error("Error in create user controller:", error);

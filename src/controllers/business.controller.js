@@ -3,21 +3,31 @@ import Business from "../models/business.model.js";
 export const createBusiness = async (req, res) => {
   try {
     const {
-      businessName,
+      businessTitle,
       category,
       description,
-      website,
-      location,
-      gstNumber,
+      completeAddress,
+      city,
+      state,
+      images,
+      price,
+      businessPhone,
+      phone,
+      userId,
     } = req.body;
 
     const newBusiness = new Business({
-      businessName,
+      businessTitle,
       category,
       description,
-      website,
-      location,
-      gstNumber,
+      completeAddress,
+      city,
+      state,
+      images,
+      price,
+      businessPhone,
+      phone,
+      userId,
     });
 
     await newBusiness.save();
@@ -25,7 +35,9 @@ export const createBusiness = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Business created successfully",
-      business: newBusiness,
+      business: await newBusiness.populate({
+        path: "userId",
+      }),
     });
   } catch (error) {
     console.error("Error in createBusiness:", error);
@@ -89,14 +101,7 @@ export const updateBusiness = async (req, res) => {
     const updates = req.body;
 
     // Validate update fields
-    const allowedUpdates = [
-      "businessName",
-      "category",
-      "description",
-      "website",
-      "location",
-      "gstNumber",
-    ];
+    const allowedUpdates = ["businessName", "category", "description"];
 
     // Filter out any fields that aren't in allowedUpdates
     const updateData = Object.keys(updates)

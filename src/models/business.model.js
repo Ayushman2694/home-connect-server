@@ -1,38 +1,53 @@
 import mongoose from "mongoose";
 
+export const VERIFICATION_STATUS = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+};
+
 const BusinessInfoSchema = new mongoose.Schema({
-  businessName: { type: String, trim: true },
+  businessTitle: { type: String, trim: true },
   category: { type: String, trim: true },
   description: { type: String, trim: true },
-  website: {
+  phone: {
     type: String,
-    trim: true,
+    required: [true, "Phone number is required"],
     validate: {
       validator: function (v) {
-        return (
-          !v ||
-          /^(http:\/\/www\.|https:\/\/www\.|http:\/\/|https:\/\/)?[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?$/.test(
-            v
-          )
-        );
+        return /^\+?[1-9]\d{1,14}$/.test(v);
       },
-      message: (props) => `${props.value} is not a valid website URL!`,
+      message: (props) => `${props.value} is not a valid phone number!`,
     },
   },
-  location: { type: String, trim: true },
-  gstNumber: {
+
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  completeAddress: { type: String, default: "" },
+  city: { type: String, default: "" },
+  state: { type: String, default: "" },
+  images: [{ type: String, trim: true }], // Array of image URLs
+
+  price: {
+    mrp: { type: String, required: true, default: "0" },
+    discountedPrice: { type: String, default: "0" },
+    sellingPrice: { type: String, required: true, default: "0" },
+    discountPrcnt: { type: String, required: true, default: "0" },
+    saveAmount: { type: String, required: true, default: "0" },
+  },
+
+  verificationStatus: {
     type: String,
-    trim: true,
-    validate: {
-      validator: function (v) {
-        return (
-          !v ||
-          /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v)
-        );
-      },
-      message: (props) => `${props.value} is not a valid GST number!`,
-    },
+    enum: Object.values(VERIFICATION_STATUS),
+    default: VERIFICATION_STATUS.PENDING,
   },
+  unit: { type: String, trim: true }, // Optional unit of measurement
+  itemType: { type: String, trim: true }, // Optional item type
+
+  businessPhone: { type: String, trim: true }, // Optional business phone number
 });
 
 const Business = mongoose.model("Business", BusinessInfoSchema);
