@@ -65,6 +65,10 @@ export const getRequestByType = async (req, res) => {
       "isAddressVerified.status": "pending",
       roles: { $in: [type] },
     }).populate("societyId");
+    const approvedReq = await User.find({
+      "isAddressVerified.status": "accepted",
+      roles: { $in: [type] },
+    }).populate("societyId");
     if (pendingReq.length === 0) {
       return res
         .status(404)
@@ -73,6 +77,7 @@ export const getRequestByType = async (req, res) => {
     res.json({
       success: true,
       code: res.statusCode,
+      approvedReq: approvedReq.length,
       request: pendingReq.map((Req) => ({
         _id: Req._id,
         fullName: Req.fullName,
