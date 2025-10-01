@@ -4,12 +4,14 @@ import {
   getBusinessById,
   updateBusiness,
   deleteBusiness,
+  getAllBusinesses,
 } from "../controllers/business.controller.js";
 
 const router = Router();
 
 // Create a new business
 router.post("/", createBusiness);
+router.get("/all", getAllBusinesses);
 
 // Get business by ID
 router.get("/:businessId", getBusinessById);

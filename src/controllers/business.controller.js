@@ -101,7 +101,12 @@ export const updateBusiness = async (req, res) => {
     const updates = req.body;
 
     // Validate update fields
-    const allowedUpdates = ["businessName", "category", "description"];
+    const allowedUpdates = [
+      "businessName",
+      "category",
+      "description",
+      "verificationStatus",
+    ];
 
     // Filter out any fields that aren't in allowedUpdates
     const updateData = Object.keys(updates)
@@ -194,6 +199,38 @@ export const deleteBusiness = async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Error deleting business",
+    });
+  }
+};
+
+/**
+ * Get all businesses
+ * @route GET /api/business
+ */
+export const getAllBusinesses = async (req, res) => {
+  try {
+    const businesses = await Business.find().lean();
+    const pendingReq = await Business.find({
+      verificationStatus: "pending",
+    }).countDocuments();
+    const formatted = businesses.map((business) => ({
+      ...business,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt,
+    }));
+    res.json({
+      success: true,
+      code: res.statusCode,
+      businesses: formatted,
+      pendingReq,
+      totalCount: businesses.length,
+    });
+  } catch (error) {
+    console.error("Error in getAllBusinesses:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching businesses",
     });
   }
 };
