@@ -67,11 +67,6 @@ const UserSchema = new mongoose.Schema(
       },
       rejectionReason: { type: String, default: null },
     },
-    verifyStatus: {
-      type: String,
-      enum: Object.values(VERIFICATION_STATUS),
-      default: VERIFICATION_STATUS.PENDING,
-    },
     tower: { type: String, trim: true },
     flatNumber: { type: String, trim: true },
     societyId: {
@@ -79,11 +74,18 @@ const UserSchema = new mongoose.Schema(
       ref: "Society",
       default: null,
     },
-    emergencyContacts: [String],
-    businessId: {
-      type: mongoose.Schema.Types.ObjectId,
+    businessIds: {
+      type: [mongoose.Schema.Types.ObjectId],
       ref: "Business",
-      default: null,
+      validate: {
+        validator: function (arr) {
+          if (!Array.isArray(arr)) return true; // Accept null/undefined/empty
+          const stringIds = arr.map((id) => id.toString());
+          return stringIds.length === new Set(stringIds).size;
+        },
+        message: "Duplicate businessId found in businessIds array.",
+      },
+      default: [],
     },
   },
   {

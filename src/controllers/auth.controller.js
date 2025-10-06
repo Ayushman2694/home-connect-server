@@ -19,11 +19,16 @@ export const sendOtp = async (req, res) => {
       .services(process.env.TWILIO_VERIFY_SERVICE_SID)
       .verifications.create({ to: e164, channel: "sms" });
 
-    res.json({ success: true, status: verification.status });
+    res.json({
+      success: true,
+      status: verification.status,
+      code: res.statusCode,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: `error in sendOtp controller: ${error.message}`,
     });
   }
@@ -60,6 +65,7 @@ export const verifyOtp = async (req, res) => {
         isAddressVerified: "pending",
         roles: ["guest"], // or ["guest"] if you want
         societyId: null,
+        businessIds: null,
         lastLogin: new Date(),
       });
 
@@ -68,6 +74,7 @@ export const verifyOtp = async (req, res) => {
       const token = generateToken(user);
       return res.json({
         success: true,
+        code: res.statusCode,
         token,
         user,
       });
@@ -81,13 +88,15 @@ export const verifyOtp = async (req, res) => {
     console.log("Generated Token:", token);
     return res.json({
       success: true,
+      code: res.statusCode,
       token,
-      user
+      user,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: `error in verifyOtp controller: ${error.message}`,
     });
   }

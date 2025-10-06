@@ -6,6 +6,8 @@ import userRoutes from "./routes/user.routes.js";
 import requestRoutes from "./routes/request.routes.js";
 import societyRoutes from "./routes/society.routes.js";
 import businessRoutes from "./routes/business.routes.js";
+import dailyServiceRoutes from "./routes/dailyService.routes.js";
+import wholesaleDealRoutes from "./routes/wholesale-deal.routes.js";
 
 dotenv.config();
 
@@ -19,6 +21,8 @@ app.use("/api/user", userRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/society", societyRoutes);
 app.use("/api/business", businessRoutes);
+app.use("/api/daily-service", dailyServiceRoutes);
+// app.use("/api/wholesale-deal", wholesaleDealRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();

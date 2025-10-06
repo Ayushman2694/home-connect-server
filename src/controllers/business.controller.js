@@ -1,4 +1,5 @@
 import Business from "../models/business.model.js";
+import User from "../models/user.model.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -34,6 +35,7 @@ export const createBusiness = async (req, res) => {
 
     res.status(201).json({
       success: true,
+      code: res.statusCode,
       message: "Business created successfully",
       business: await newBusiness.populate({
         path: "userId",
@@ -45,6 +47,7 @@ export const createBusiness = async (req, res) => {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
+        code: res.statusCode,
         error: "Validation Error",
         details: Object.values(error.errors).map((err) => err.message),
       });
@@ -52,6 +55,7 @@ export const createBusiness = async (req, res) => {
 
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: "Error creating business",
     });
   }
@@ -59,34 +63,39 @@ export const createBusiness = async (req, res) => {
 
 export const getBusinessById = async (req, res) => {
   try {
-    const { businessId } = req.params;
-
-    const business = await Business.findById(businessId).lean();
-
-    if (!business) {
+    const { userId } = req.params;
+    const businesses = await Business.find({ userId }).lean();
+    const pendingReq = await Business.countDocuments({
+      userId,
+      "isBusinessVerified.status": "pending",
+    });
+    if (!businesses || businesses.length === 0) {
       return res.status(404).json({
         success: false,
-        error: "Business not found",
+        code: res.statusCode,
+        error: "No businesses found for this userId",
       });
     }
-
     res.json({
       success: true,
-      business,
+      code: res.statusCode,
+      businesses,
+      count: businesses.length,
+      pendingReq: pendingReq,
     });
   } catch (error) {
     console.error("Error in getBusinessById:", error);
-
     if (error.name === "CastError") {
       return res.status(400).json({
         success: false,
-        error: "Invalid business ID format",
+        code: res.statusCode,
+        error: "Invalid user ID format",
       });
     }
-
     res.status(500).json({
       success: false,
-      error: "Error fetching business",
+      code: res.statusCode,
+      error: "Error fetching businesses",
     });
   }
 };
@@ -100,17 +109,12 @@ export const updateBusiness = async (req, res) => {
     const { businessId } = req.params;
     const updates = req.body;
 
-    // Validate update fields
-    const allowedUpdates = [
-      "businessName",
-      "category",
-      "description",
-      "verificationStatus",
-    ];
+    // Define fields that are NOT allowed to be updated
+    const notAllowedUpdates = ["_id", "createdAt", "updatedAt", "userId"];
 
-    // Filter out any fields that aren't in allowedUpdates
+    // Remove not allowed fields from updates
     const updateData = Object.keys(updates)
-      .filter((key) => allowedUpdates.includes(key))
+      .filter((key) => !notAllowedUpdates.includes(key))
       .reduce((obj, key) => {
         obj[key] = updates[key];
         return obj;
@@ -119,6 +123,7 @@ export const updateBusiness = async (req, res) => {
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         success: false,
+        code: res.statusCode,
         error: "No valid fields to update",
       });
     }
@@ -131,12 +136,14 @@ export const updateBusiness = async (req, res) => {
     if (!business) {
       return res.status(404).json({
         success: false,
+        code: res.statusCode,
         error: "Business not found",
       });
     }
 
     res.json({
       success: true,
+      code: res.statusCode,
       message: "Business updated successfully",
       business,
     });
@@ -146,6 +153,7 @@ export const updateBusiness = async (req, res) => {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
+        code: res.statusCode,
         error: "Validation Error",
         details: Object.values(error.errors).map((err) => err.message),
       });
@@ -154,12 +162,14 @@ export const updateBusiness = async (req, res) => {
     if (error.name === "CastError") {
       return res.status(400).json({
         success: false,
+        code: res.statusCode,
         error: "Invalid business ID format",
       });
     }
 
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: "Error updating business",
     });
   }
@@ -172,32 +182,38 @@ export const updateBusiness = async (req, res) => {
 export const deleteBusiness = async (req, res) => {
   try {
     const { businessId } = req.params;
-
     const business = await Business.findByIdAndDelete(businessId);
-
     if (!business) {
       return res.status(404).json({
         success: false,
+        code: res.statusCode,
         error: "Business not found",
       });
     }
-
+    // Remove businessId from the user's businessIds array
+    if (business.userId) {
+      await User.findByIdAndUpdate(business.userId, {
+        $pull: { businessIds: businessId },
+      });
+    }
     res.json({
       success: true,
-      message: "Business deleted successfully",
+      code: res.statusCode,
+      message:
+        "Business deleted successfully and removed from user's businessIds.",
     });
   } catch (error) {
     console.error("Error in deleteBusiness:", error);
-
     if (error.name === "CastError") {
       return res.status(400).json({
         success: false,
+        code: res.statusCode,
         error: "Invalid business ID format",
       });
     }
-
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: "Error deleting business",
     });
   }
@@ -210,9 +226,9 @@ export const deleteBusiness = async (req, res) => {
 export const getAllBusinesses = async (req, res) => {
   try {
     const businesses = await Business.find().lean();
-    const pendingReq = await Business.find({
-      verificationStatus: "pending",
-    }).countDocuments();
+    const pendingReq = await Business.countDocuments({
+      "isBusinessVerified.status": "pending",
+    });
     const formatted = businesses.map((business) => ({
       ...business,
       createdAt: business.createdAt,
