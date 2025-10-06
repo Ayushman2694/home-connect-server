@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Request from "../models/request.model.js";
-import User, { VERIFICATION_STATUS, USER_ROLES } from "../models/user.model.js";
-import { Society } from "../models/society.model.js";
+import User from "../models/user.model.js";
+import Business from "../models/business.model.js";
 
 export const createUser = async (req, res) => {
   try {
@@ -103,19 +103,6 @@ export const getRequestByUserId = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
-    const {
-      societyId,
-      fullName,
-      flatNumber,
-      roles,
-      phone,
-      profilePhotoUrl,
-      isAddressVerified,
-      ververifyStatus,
-      tower,
-      emergencyContacts,
-      businessId,
-    } = req.body;
     const updates = { ...req.body };
     if (updates.societyId) {
       if (mongoose.Types.ObjectId.isValid(updates.societyId)) {
@@ -184,6 +171,48 @@ export const getUserById = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Error fetching user",
+    });
+  }
+};
+
+/**
+ * Sync user's businessIds array with all businesses where userId matches
+ * @route PUT /api/user/:userId/sync-business-ids
+ */
+export const syncUserBusinessIds = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    // Find all businesses for this user
+    const businesses = await Business.find({ userId }).select("_id");
+    const businessIds = businesses.map((b) => b._id);
+    // Update user's businessIds array
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { businessIds },
+      { new: true, runValidators: true }
+    ).populate({
+      path: "societyId",
+      select: "-towers -totalFlats",
+    });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "User not found",
+      });
+    }
+    res.json({
+      success: true,
+      code: res.statusCode,
+      message: "User's businessIds synced successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Error in syncUserBusinessIds:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error syncing businessIds",
     });
   }
 };

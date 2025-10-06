@@ -39,17 +39,18 @@ const BusinessInfoSchema = new mongoose.Schema(
       discountPrcnt: { type: String, required: true, default: "0" },
       saveAmount: { type: String, required: true, default: "0" },
     },
-
-    verificationStatus: {
-      type: String,
-      enum: Object.values(VERIFICATION_STATUS),
-      default: VERIFICATION_STATUS.PENDING,
+    isBusinessVerified: {
+      status: {
+        type: String,
+        enum: Object.values(VERIFICATION_STATUS),
+        default: VERIFICATION_STATUS.PENDING,
+      },
+      rejectionReason: { type: String, default: null },
     },
     unit: { type: String, trim: true }, // Optional unit of measurement
     itemType: { type: String, trim: true }, // Optional item type
 
     businessPhone: { type: String, trim: true }, // Optional business phone number
-    rejectionReason: { type: String, default: "" },
   },
   { timestamps: true }
 );

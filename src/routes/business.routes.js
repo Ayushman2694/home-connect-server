@@ -13,8 +13,8 @@ const router = Router();
 router.post("/", createBusiness);
 router.get("/all", getAllBusinesses);
 
-// Get business by ID
-router.get("/:businessId", getBusinessById);
+// Get business by user ID
+router.get("/:userId", getBusinessById);
 
 // Update business
 router.patch("/:businessId", updateBusiness);
