@@ -22,7 +22,7 @@ app.use("/api/requests", requestRoutes);
 app.use("/api/society", societyRoutes);
 app.use("/api/business", businessRoutes);
 app.use("/api/daily-service", dailyServiceRoutes);
-// app.use("/api/wholesale-deal", wholesaleDealRoutes);
+app.use("/api/wholesale-deal", wholesaleDealRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();
