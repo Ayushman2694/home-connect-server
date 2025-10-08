@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const WholesaleDealSchema = new mongoose.Schema(
   {
-    dealTitle: {
+    title: {
       type: String,
       trim: true,
       maxLength: [100, "Deal title cannot be more than 100 characters"],
@@ -17,19 +17,23 @@ const WholesaleDealSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid phone number!`,
       },
     },
-    itemPhotos: [{ type: String, trim: true }], // Array of image URLs
+    itemPhotos: [{ type: String, trim: true }],
     description: { type: String, trim: true },
     quantityAvailable: { type: Number, required: true, min: 1 },
-    quantityUnit: { type: String, trim: true }, // e.g., kg, liters, pieces
+    quantityUnit: { type: String, trim: true },
     minimumOrderQuantity: { type: Number, required: true, min: 1 },
     maximumOrderQuantity: { type: Number, min: 1 },
     price: {
       mrp: { type: String, required: true, default: "0" },
-      discountedPrice: { type: String, default: "0" },
-      sellingPrice: { type: String, required: true, default: "0" },
-      discountPrcnt: { type: String, required: true, default: "0" },
-      saveAmount: { type: String, required: true, default: "0" },
+      dealPrice: { type: String, required: true, default: "0" },
     },
+    orderDeadline: { type: Date, required: true },
+    estimatedDeliveryDate: { type: Date, required: true }, // ✅ Updated
+    cod: { type: Boolean, default: false },
+    moneyBackGuarantee: { type: Boolean, default: false },
+    openBoxDelivery: { type: Boolean, default: false },
+    freeSamples: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
   },
   {
     timestamps: true,
