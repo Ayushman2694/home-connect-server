@@ -1,54 +1,70 @@
+import WholesaleDeal from "../models/wholesale-deal.model.js";
+
 export const createWholesaleDeal = async (req, res) => {
   try {
     const {
-      fullName,
+      title,
       phone,
-      roles,
-      profilePhotoUrl,
-      societyId,
-      flatNumber,
-      tower,
+      itemPhotos,
+      description,
+      quantityAvailable,
+      quantityUnit,
+      minimumOrderQuantity,
+      maximumOrderQuantity,
+      price,
+      orderDeadline,
+      estimatedDeliveryDate,
+      cod,
+      moneyBackGuarantee,
+      openBoxDelivery,
+      freeSamples,
+      isActive,
     } = req.body;
 
-    // Use static method from model
-    const existingUser = await User.findOne({ phone });
-    if (existingUser) {
-      return res.status(404).json({
-        message: "User already exists",
-      });
+    // ✅ Basic validation
+    if (
+      !title ||
+      !phone ||
+      !quantityAvailable ||
+      !minimumOrderQuantity ||
+      !orderDeadline ||
+      !estimatedDeliveryDate ||
+      !price?.mrp ||
+      !price?.dealPrice
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-    const newUser = new User({
-      fullName,
+    // ✅ Create deal
+    const deal = await WholesaleDeal.create({
+      title,
       phone,
-      roles,
-      profilePhotoUrl,
-      societyId,
-      flatNumber,
-      tower,
+      itemPhotos,
+      description,
+      quantityAvailable,
+      quantityUnit,
+      minimumOrderQuantity,
+      maximumOrderQuantity,
+      price,
+      orderDeadline,
+      estimatedDeliveryDate,
+      cod,
+      moneyBackGuarantee,
+      openBoxDelivery,
+      freeSamples,
+      isActive,
     });
 
-    await newUser.save();
-
-    return res.status(201).json({
-      message: "User created successfully",
-      newUser: await newUser.populate({
-        path: "societyId",
-        select: "-towers -totalFlats",
-      }),
+    res.status(201).json({
+      success: true,
+      message: "Wholesale deal created successfully",
+      data: deal,
     });
   } catch (error) {
-    console.error("Error in create user controller:", error);
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: "Validation Error",
-        errors: Object.values(error.errors).map((err) => err.message),
-      });
-    }
-    return res.status(500).json({
+    console.error("Error creating deal:", error);
+    res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: error.message || "Server error while creating deal",
     });
   }
 };
