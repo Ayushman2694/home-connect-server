@@ -2,31 +2,33 @@ import { PincodeData } from "../models/pincodeData.model.js";
 import { Society } from "../models/society.model.js";
 import User from "../models/user.model.js";
 
-export const getSocietiesByPincode = async (req, res) => {
+export const getSocietyById = async (req, res) => {
   try {
-    const { pincode } = req.params;
+    const { societyId } = req.params;
 
-    if (!pincode) {
-      return res.status(400).json({ message: "Pincode is required" });
+    if (!societyId) {
+      return res
+        .status(400)
+        .json({
+          message: "Society ID is required",
+          success: false,
+          code: res.statusCode,
+        });
     }
 
-    const pincodeData = await PincodeData.findOne({ pincode }).populate(
-      "societies"
-    );
+    const society = await Society.findById(societyId);
 
-    if (!pincodeData) {
+    if (!society) {
       return res
         .status(404)
-        .json({ message: "No societies found for this pincode" });
+        .json({
+          message: "Society not found",
+          success: false,
+          code: res.statusCode,
+        });
     }
 
-    res.status(200).json({
-      pincode: pincodeData.pincode,
-      city: pincodeData.city,
-      area: pincodeData.area,
-      state: pincodeData.state,
-      societies: pincodeData.societies,
-    });
+    res.status(200).json({ society, success: true, code: res.statusCode });
   } catch (err) {
     console.error("Error in getSocietiesByPincode controller:", err);
     res

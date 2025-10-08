@@ -66,6 +66,7 @@ export const verifyOtp = async (req, res) => {
         roles: ["guest"], // or ["guest"] if you want
         societyId: null,
         businessIds: null,
+        tower: null,
         lastLogin: new Date(),
       });
 

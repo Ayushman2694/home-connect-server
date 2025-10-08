@@ -1,18 +1,5 @@
 import mongoose from "mongoose";
-
-// Define constants for enums and validation
-export const USER_ROLES = {
-  GUEST: "guest",
-  RESIDENT: "resident",
-  BUSINESS: "business",
-  ADMIN: "admin",
-};
-
-export const VERIFICATION_STATUS = {
-  PENDING: "pending",
-  APPROVED: "approved",
-  REJECTED: "rejected",
-};
+import { USER_ROLES, VERIFICATION_STATUS } from "../utils/constants.js";
 
 const UserSchema = new mongoose.Schema(
   {
@@ -68,7 +55,7 @@ const UserSchema = new mongoose.Schema(
       rejectionReason: { type: String, default: null },
     },
     tower: { type: String, trim: true },
-    flatNumber: { type: String, trim: true },
+    flatNo: { type: String, trim: true },
     societyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Society",

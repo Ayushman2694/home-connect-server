@@ -78,11 +78,14 @@ export const createDailyService = async (req, res) => {
   }
 };
 
-export const getAllDailyServices = async (req, res) => {
+export const getAllDailyServicesBySocietyId = async (req, res) => {
   try {
-    const dailyServices = await DailyService.find().lean();
+    const { societyId } = req.params;
+    const dailyServices = await DailyService.find({
+      societyIds: societyId,
+    }).lean();
     const pendingReq = await DailyService.find({
-      verificationStatus: "pending",
+      "verificationStatus.status": "pending",
     }).countDocuments();
     const formatted = dailyServices.map((service) => ({
       ...service,
@@ -102,6 +105,73 @@ export const getAllDailyServices = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error fetching daily services",
+    });
+  }
+};
+
+export const getHelperById = async (req, res) => {
+  try {
+    const { helperId } = req.params;
+    const helper = await DailyService.findById(helperId);
+    if (!helper) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "Helper not found",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      code: res.statusCode,
+      helper,
+    });
+  } catch (error) {
+    console.error("Error in getHelperById:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching helper",
+    });
+  }
+};
+
+export const updateDailyService = async (req, res) => {
+  try {
+    const { helperId } = req.params;
+    const updates = req.body;
+    const notAllowedUpdates = ["_id", "createdAt", "updatedAt", "phone"];
+
+    // Remove not allowed fields from updates
+    notAllowedUpdates.forEach((field) => delete updates[field]);
+    // If report is being updated, sync totalReportCount with reason array length
+    if (updates.report && Array.isArray(updates.report.reason)) {
+      updates.report.totalReportCount = updates.report.reason.length;
+    }
+    const updatedHelper = await DailyService.findByIdAndUpdate(
+      helperId,
+      updates,
+      { new: true }
+    );
+
+    if (!updatedHelper) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "Helper not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      code: res.statusCode,
+      helper: updatedHelper,
+    });
+  } catch (error) {
+    console.error("Error in updateDailyService:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error updating helper",
     });
   }
 };
