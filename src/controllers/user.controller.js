@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
+import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 export const createUser = async (req, res) => {
   try {
@@ -58,23 +59,30 @@ export const createUser = async (req, res) => {
   }
 };
 
-export const getAllUsers = async (req, res) => {
+export const getAllUserBySocietyId = async (req, res) => {
   try {
-    const users = await User.find();
-
+    const { societyId } = req.params;
+    // Only return users with 'business' or 'resident' in roles and matching societyId
+    const query = {
+      roles: { $in: ["business", "resident"] },
+    };
+    if (societyId) {
+      query.societyId = societyId;
+    }
+    const users = await User.find(query).populate({
+      path: "societyId",
+      select: "-totalFlats -totalResidents",
+    });
     res.json({
       success: true,
-      users: users.map((user) => ({
-        id: String(user._id),
-        phone: user.phone,
-        fullName: user.fullName,
-        roles: user.roles,
-      })),
+      code: res.statusCode,
+      users,
     });
   } catch (error) {
     console.error("Error in getAllUsers:", error);
     res.status(500).json({
       success: false,
+      code: res.statusCode,
       error: "Error fetching users",
     });
   }
@@ -213,6 +221,42 @@ export const syncUserBusinessIds = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error syncing businessIds",
+    });
+  }
+};
+
+export const getPendingUsersBySocietyId = async (req, res) => {
+  try {
+    const { societyId } = req.params;
+    const query = {
+      roles: { $in: ["resident"] },
+    };
+    if (!societyId) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        error: "societyId is required",
+      });
+    }
+    const users = await User.find({
+      ...query,
+      societyId,
+      "isAddressVerified.status": VERIFICATION_STATUS.PENDING,
+    }).populate({
+      path: "societyId",
+      select: "-towers -totalFlats -totalResidents",
+    });
+    res.json({
+      success: true,
+      code: res.statusCode,
+      users,
+    });
+  } catch (error) {
+    console.error("Error in getPendingUsersBySocietyId:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching pending users",
     });
   }
 };

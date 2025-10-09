@@ -1,7 +1,8 @@
 import express from "express";
 import {
   createUser,
-  getAllUsers,
+  getAllUserBySocietyId,
+  getPendingUsersBySocietyId,
   getRequestByUserId,
   getUserById,
   syncUserBusinessIds,
@@ -10,11 +11,12 @@ import {
 const router = express.Router();
 
 router.post("/", createUser);
-// router.get("/", getAllUsers);
+router.get("/getUsers/:societyId", getAllUserBySocietyId);
 router.get("/:userId/requests", getRequestByUserId);
 router.patch("/:userId", updateUser);
 // Get a single user by id
 router.get("/:userId", getUserById);
 router.get("/sync/:userId", syncUserBusinessIds);
+router.get("/getPendingUsers/:societyId", getPendingUsersBySocietyId);
 
 export default router;
