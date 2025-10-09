@@ -8,6 +8,8 @@ import societyRoutes from "./routes/society.routes.js";
 import businessRoutes from "./routes/business.routes.js";
 import dailyServiceRoutes from "./routes/dailyService.routes.js";
 import wholesaleDealRoutes from "./routes/wholesale-deal.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
+import { startNotificationWatcher } from "./watchers/notification.watcher.js";
 
 dotenv.config();
 
@@ -23,8 +25,10 @@ app.use("/api/society", societyRoutes);
 app.use("/api/business", businessRoutes);
 app.use("/api/daily-service", dailyServiceRoutes);
 app.use("/api/wholesale-deal", wholesaleDealRoutes);
+app.use("/api/notification", notificationRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();
+  startNotificationWatcher();
   console.log(`Server running on port ${process.env.PORT}`);
 });

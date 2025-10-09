@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FCM Token Generator</title>
+</head>
+<body>
+  <h1>FCM Token Generator</h1>
+  <button id="btn">Generate Token</button>
+  <p id="tokenOutput" style="word-break: break-all;"></p>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
+    import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-messaging.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAvSq53bVmruxVU93ruY8HG_Hznc1uxj7s",
+  authDomain: "home-connect-4ca0c.firebaseapp.com",
+  databaseURL: "https://home-connect-4ca0c-default-rtdb.firebaseio.com",
+  projectId: "home-connect-4ca0c",
+  storageBucket: "home-connect-4ca0c.firebasestorage.app",
+  messagingSenderId: "283441779952",
+  appId: "1:283441779952:web:6973a6a3ef03fe3f5ade35",
+  measurementId: "G-CY1DHCCVGF"
+};
+
+    const app = initializeApp(firebaseConfig);
+    const messaging = getMessaging(app);
+
+    document.getElementById("btn").addEventListener("click", async () => {
+      try {
+        // 1️⃣ Request Notification permission
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          alert("Notifications not allowed!");
+          return;
+        }
+
+        // 2️⃣ Register the service worker manually
+        const swRegistration = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+        console.log("Service Worker registered:", swRegistration);
+
+        // 3️⃣ Get FCM token, passing the registered SW
+        const vapidKey = "BA23hOqPEwgHNrOeMDFl0HBiiga4Hrcr5qQThGRfiBWddgQPTA6BsPwkQRq8s5Pyu6DL5nG9VqpkJYcflZKxrrY"; // from Firebase Console
+        const fcmToken = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+
+        console.log("FCM Token:", fcmToken);
+        document.getElementById("tokenOutput").innerText = fcmToken;
+        alert("FCM Token generated! Copy it.");
+      } catch (err) {
+        console.error("Error getting FCM token:", err);
+        alert("Error getting FCM token. See console.");
+      }
+    });
+  </script>
+</body>
+</html>
