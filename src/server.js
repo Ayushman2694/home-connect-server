@@ -27,6 +27,7 @@ app.use("/api/daily-service", dailyServiceRoutes);
 app.use("/api/wholesale-deal", wholesaleDealRoutes);
 app.use("/api/notification", notificationRoutes);
 
+
 app.listen(process.env.PORT || 3000, () => {
   connectDB();
   startNotificationWatcher();
