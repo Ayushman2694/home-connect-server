@@ -1,5 +1,6 @@
 import Business from "../models/business.model.js";
 import User from "../models/user.model.js";
+import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -247,6 +248,56 @@ export const getAllBusinesses = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error fetching businesses",
+    });
+  }
+};
+
+export const fetchBusinessBySocietyId = async (req, res) => {
+  try {
+    const { societyId } = req.params;
+    const businesses = await Business.find({ societyId }).lean();
+    const pendingReq = await Business.countDocuments({
+      "isBusinessVerified.status": VERIFICATION_STATUS.PENDING,
+    });
+    res.json({
+      success: true,
+      code: res.statusCode,
+      businesses,
+      totalCount: businesses.length,
+      pendingReq,
+    });
+  } catch (error) {
+    console.error("Error in fetchBusinessBySocietyId:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching businesses by societyId",
+    });
+  }
+};
+
+export const getProductById = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "Product not found",
+      });
+    }
+    res.status(200).json({
+      success: true,
+      code: res.statusCode,
+      product,
+    });
+  } catch (error) {
+    console.error("Error in getProductById:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching product",
     });
   }
 };

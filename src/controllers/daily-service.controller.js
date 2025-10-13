@@ -1,4 +1,6 @@
 import DailyService from "../models/daily-service.model.js";
+import { VERIFICATION_STATUS } from "../utils/constants.js";
+import mongoose from "mongoose";
 
 export const createDailyService = async (req, res) => {
   try {
@@ -16,13 +18,23 @@ export const createDailyService = async (req, res) => {
     const existingUser = await DailyService.findOne({ phone });
     if (existingUser) {
       // Only add new societyId if not already present
-      const newIds = Array.isArray(societyIds) ? societyIds : [societyIds];
+      const newIds = (Array.isArray(societyIds) ? societyIds : [societyIds])
+        .filter(Boolean)
+        .map((id) => (typeof id === "string" ? id : id.toString()))
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
       const currentIds = existingUser.societyIds.map((id) => id.toString());
       const idsToAdd = newIds.filter(
         (id) => !currentIds.includes(id.toString())
       );
       if (idsToAdd.length > 0) {
-        existingUser.societyIds.push(...idsToAdd);
+        existingUser.societyIds = [
+          ...currentIds.map((id) => new mongoose.Types.ObjectId(id)),
+          ...idsToAdd,
+        ].filter(
+          (id, idx, arr) =>
+            arr.findIndex((x) => x.toString() === id.toString()) === idx
+        );
         await existingUser.save();
         return res.status(200).json({
           success: true,
@@ -85,7 +97,10 @@ export const getAllDailyServicesBySocietyId = async (req, res) => {
       societyIds: societyId,
     }).lean();
     const pendingReq = await DailyService.find({
-      "verificationStatus.status": "pending",
+      "verificationStatus.status": VERIFICATION_STATUS.PENDING,
+    }).countDocuments();
+    const approvedReq = await DailyService.find({
+      "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
     }).countDocuments();
     const formatted = dailyServices.map((service) => ({
       ...service,
@@ -97,6 +112,7 @@ export const getAllDailyServicesBySocietyId = async (req, res) => {
       code: res.statusCode,
       dailyServices: formatted,
       pendingReq,
+      approvedReq,
       totalCount: dailyServices.length,
     });
   } catch (error) {

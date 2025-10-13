@@ -40,13 +40,7 @@ const DailyServiceSchema = new mongoose.Schema(
           ref: "Society",
         },
       ],
-      validate: {
-        validator: function (arr) {
-          const stringIds = arr.map((id) => id.toString());
-          return stringIds.length === new Set(stringIds).size;
-        },
-        message: "Duplicate societyId found in societyIds array.",
-      },
+      default: [],
     },
     reviews: {
       type: [

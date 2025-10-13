@@ -11,3 +11,10 @@ export const VERIFICATION_STATUS = {
   APPROVED: "approved",
   REJECTED: "rejected",
 };
+
+export const DEAL_STATUS = {
+  ACTIVE: "active",
+  COMPLETED: "completed",
+  EXPIRED: "expired",
+  PENDING: "pending",
+};

@@ -49,7 +49,32 @@ const BusinessInfoSchema = new mongoose.Schema(
     },
     unit: { type: String, trim: true }, // Optional unit of measurement
     itemType: { type: String, trim: true }, // Optional item type
-
+    societyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Society",
+      default: null,
+    },
+    report: {
+      reason: [{ type: String, trim: true }],
+      totalReportCount: { type: Number, default: 0 },
+    },
+    reviews: {
+      type: [
+        {
+          _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
+          userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          userName: { type: String, trim: true },
+          rating: { type: Number, min: 1, max: 5, required: true },
+          comment: { type: String, trim: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: null,
+    },
     businessPhone: { type: String, trim: true }, // Optional business phone number
   },
   { timestamps: true }
