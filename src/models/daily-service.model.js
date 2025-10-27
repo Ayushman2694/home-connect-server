@@ -17,6 +17,7 @@ const DailyServiceSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid phone number!`,
       },
     },
+    serviceType: { type: String, trim: true },
     category: { type: String, trim: true },
     description: { type: String, trim: true },
     images: [{ type: String, trim: true }],

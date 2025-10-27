@@ -14,12 +14,14 @@ export const createWholesaleDeal = async (req, res) => {
       maximumOrderQty,
       currentOrderedQty,
       price,
+      category,
       orderDeadlineDate,
       estimatedDeliveryDate,
       dealOptions,
       isDealActive,
       userId,
       dealStatus,
+      orders,
       societyId,
       verificationStatus,
     } = req.body;
@@ -36,12 +38,14 @@ export const createWholesaleDeal = async (req, res) => {
       maximumOrderQty,
       currentOrderedQty,
       price,
+      category,
       orderDeadlineDate,
       estimatedDeliveryDate,
       dealOptions,
       isDealActive,
       userId,
       dealStatus,
+      orders,
       societyId,
       verificationStatus,
     });
@@ -66,7 +70,7 @@ export const getAllDealsBySocietyId = async (req, res) => {
     const { societyId } = req.params;
     const deals = await WholesaleDeal.find({ societyId }).populate(
       "userId",
-      "fullName phone"
+      "fullName phone profilePhotoUrl"
     );
     const pendingReq = await WholesaleDeal.countDocuments({
       "verificationStatus.status": VERIFICATION_STATUS.PENDING,
@@ -246,7 +250,7 @@ export const getDealById = async (req, res) => {
     const deal = await WholesaleDeal.findOne({
       _id: dealId,
       "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
-    }).populate("userId", "fullName phone");
+    }).populate("userId", "fullName phone profilePhotoUrl");
 
     if (!deal) {
       return res.status(404).json({
@@ -268,5 +272,21 @@ export const getDealById = async (req, res) => {
       code: res.statusCode,
       message: error.message,
     });
+  }
+};
+
+// Get all deals by userId
+export const getDealsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const deals = await WholesaleDeal.find({ userId })
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .sort({ createdAt: -1 });
+    res.status(200).json({ success: true, code: res.statusCode, deals });
+  } catch (error) {
+    console.error("Error fetching deals by userId:", error);
+    res
+      .status(500)
+      .json({ success: false, code: res.statusCode, message: error.message });
   }
 };

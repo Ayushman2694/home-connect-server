@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Business from "../models/business.model.js";
 import User from "../models/user.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
@@ -5,7 +6,7 @@ import { VERIFICATION_STATUS } from "../utils/constants.js";
 export const createBusiness = async (req, res) => {
   try {
     const {
-      businessTitle,
+      title,
       category,
       description,
       completeAddress,
@@ -16,10 +17,11 @@ export const createBusiness = async (req, res) => {
       businessPhone,
       phone,
       userId,
+      societyId,
     } = req.body;
 
     const newBusiness = new Business({
-      businessTitle,
+      title,
       category,
       description,
       completeAddress,
@@ -30,6 +32,7 @@ export const createBusiness = async (req, res) => {
       businessPhone,
       phone,
       userId,
+      societyId,
     });
 
     await newBusiness.save();
@@ -58,45 +61,6 @@ export const createBusiness = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error creating business",
-    });
-  }
-};
-
-export const getBusinessById = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const businesses = await Business.find({ userId }).lean();
-    const pendingReq = await Business.countDocuments({
-      userId,
-      "isBusinessVerified.status": "pending",
-    });
-    if (!businesses || businesses.length === 0) {
-      return res.status(404).json({
-        success: false,
-        code: res.statusCode,
-        error: "No businesses found for this userId",
-      });
-    }
-    res.json({
-      success: true,
-      code: res.statusCode,
-      businesses,
-      count: businesses.length,
-      pendingReq: pendingReq,
-    });
-  } catch (error) {
-    console.error("Error in getBusinessById:", error);
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        success: false,
-        code: res.statusCode,
-        error: "Invalid user ID format",
-      });
-    }
-    res.status(500).json({
-      success: false,
-      code: res.statusCode,
-      error: "Error fetching businesses",
     });
   }
 };
@@ -177,50 +141,6 @@ export const updateBusiness = async (req, res) => {
 };
 
 /**
- * Delete business by ID
- * @route DELETE /api/business/:businessId
- */
-export const deleteBusiness = async (req, res) => {
-  try {
-    const { businessId } = req.params;
-    const business = await Business.findByIdAndDelete(businessId);
-    if (!business) {
-      return res.status(404).json({
-        success: false,
-        code: res.statusCode,
-        error: "Business not found",
-      });
-    }
-    // Remove businessId from the user's businessIds array
-    if (business.userId) {
-      await User.findByIdAndUpdate(business.userId, {
-        $pull: { businessIds: businessId },
-      });
-    }
-    res.json({
-      success: true,
-      code: res.statusCode,
-      message:
-        "Business deleted successfully and removed from user's businessIds.",
-    });
-  } catch (error) {
-    console.error("Error in deleteBusiness:", error);
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        success: false,
-        code: res.statusCode,
-        error: "Invalid business ID format",
-      });
-    }
-    res.status(500).json({
-      success: false,
-      code: res.statusCode,
-      error: "Error deleting business",
-    });
-  }
-};
-
-/**
  * Get all businesses
  * @route GET /api/business
  */
@@ -228,7 +148,7 @@ export const getAllBusinesses = async (req, res) => {
   try {
     const businesses = await Business.find().lean();
     const pendingReq = await Business.countDocuments({
-      "isBusinessVerified.status": "pending",
+      "verificationStatus.status": "pending",
     });
     const formatted = businesses.map((business) => ({
       ...business,
@@ -255,16 +175,24 @@ export const getAllBusinesses = async (req, res) => {
 export const fetchBusinessBySocietyId = async (req, res) => {
   try {
     const { societyId } = req.params;
-    const businesses = await Business.find({ societyId }).lean();
-    const pendingReq = await Business.countDocuments({
-      "isBusinessVerified.status": VERIFICATION_STATUS.PENDING,
-    });
+    const sid = mongoose.isValidObjectId(societyId)
+      ? new mongoose.Types.ObjectId(societyId)
+      : societyId;
+
+    // Only fetch approved businesses for this society
+    const filter = {
+      societyId: sid,
+      "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
+    };
+    const businesses = await Business.find(filter)
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .lean();
+
     res.json({
       success: true,
       code: res.statusCode,
       businesses,
       totalCount: businesses.length,
-      pendingReq,
     });
   } catch (error) {
     console.error("Error in fetchBusinessBySocietyId:", error);

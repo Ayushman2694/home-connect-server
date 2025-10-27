@@ -7,6 +7,7 @@ export const createDailyService = async (req, res) => {
     const {
       name,
       phone,
+      serviceType,
       category,
       description,
       images,
@@ -60,6 +61,7 @@ export const createDailyService = async (req, res) => {
     const newDailyService = new DailyService({
       name,
       phone,
+      serviceType,
       category,
       description,
       images,

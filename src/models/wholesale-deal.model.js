@@ -1,6 +1,23 @@
 import mongoose from "mongoose";
 import { DEAL_STATUS, VERIFICATION_STATUS } from "../utils/constants.js";
 
+const orderSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  quantity: { type: Number, required: true },
+  amount: { type: Number, required: true },
+  status: {
+    type: String,
+    enum: ["pending", "confirmed", "cancelled", "delivered"],
+    default: "pending",
+  },
+  orderedAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  delivery: {
+    address: String,
+    phone: String,
+  },
+});
+
 const WholesaleDealSchema = new mongoose.Schema(
   {
     title: {
@@ -19,12 +36,13 @@ const WholesaleDealSchema = new mongoose.Schema(
       },
     },
     images: [{ type: String, trim: true }],
+    category: { type: String, trim: true },
     description: { type: String, trim: true },
-    quantityAvailable: { type: Number, required: true, min: 1 },
     quantityUnit: { type: String, trim: true },
     minimumOrderQty: { type: String, required: true, min: 1 },
     maximumOrderQty: { type: String, min: 1 },
-    currentOrderedQty: { type: String, required: true, min: 0 },
+    currentOrderedQty: { type: Number, required: true, min: 0, default: 0 },
+    orders: [orderSchema],
     price: {
       mrp: { type: String, required: true, default: "0" },
       discountedPercent: { type: String, default: "0" },
@@ -80,6 +98,7 @@ const WholesaleDealSchema = new mongoose.Schema(
           userName: { type: String, trim: true },
           rating: { type: Number, min: 1, max: 5, required: true },
           comment: { type: String, trim: true },
+          profilePhotoUrl: { type: String, trim: true },
           createdAt: { type: Date, default: Date.now },
         },
       ],
@@ -91,5 +110,13 @@ const WholesaleDealSchema = new mongoose.Schema(
   }
 );
 
+// Add indexes for optimized queries by userId and societyId
+WholesaleDealSchema.index({ userId: 1 });
+WholesaleDealSchema.index({ societyId: 1 });
+
 const WholesaleDeal = mongoose.model("WholesaleDeal", WholesaleDealSchema);
 export default WholesaleDeal;
+
+// Index to efficiently find orders by user across deals and sort by time
+// Helps queries like: db.wholesaledeals.find({ 'orders.userId': <uid> })
+WholesaleDealSchema.index({ "orders.userId": 1, "orders.orderedAt": -1 });

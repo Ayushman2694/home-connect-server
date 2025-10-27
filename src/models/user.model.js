@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema(
       trim: true,
       maxLength: [100, "Full name cannot be more than 100 characters"],
     },
+    completeAddress: { type: String, default: "" },
     phone: {
       type: String,
       unique: true,
@@ -74,6 +75,26 @@ const UserSchema = new mongoose.Schema(
       },
       default: [],
     },
+    // Lightweight pointers to a user's orders across sources
+    orders: [
+      {
+        sourceType: {
+          type: String,
+          enum: ["wholesale", "business"],
+          required: true,
+        },
+        sourceId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        orderId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        quantity: { type: Number, default: 0 },
+        amount: { type: Number, default: 0 },
+        status: {
+          type: String,
+          enum: ["pending", "confirmed", "cancelled", "delivered"],
+          default: "pending",
+        },
+        updatedAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,
