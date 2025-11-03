@@ -18,10 +18,10 @@ const DailyServiceSchema = new mongoose.Schema(
       },
     },
     serviceType: { type: String, trim: true },
-    category: { type: String, trim: true },
+    categoryId: { type: String, trim: true },
     description: { type: String, trim: true },
     images: [{ type: String, trim: true }],
-    averageRating: { type: String, trim: true },
+    averageRating: { type: Number, trim: true },
     verificationStatus: {
       status: {
         type: String,
@@ -42,6 +42,35 @@ const DailyServiceSchema = new mongoose.Schema(
         },
       ],
       default: [],
+      validate: {
+        validator: function (arr) {
+          if (!Array.isArray(arr)) return true; // allow undefined/null
+          const stringIds = arr.map((id) => id?.toString());
+          return stringIds.length === new Set(stringIds).size;
+        },
+        message: "Duplicate societyId found in societyIds array.",
+      },
+    },
+    userIds: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      ],
+      default: [],
+      validate: {
+        validator: function (arr) {
+          if (!Array.isArray(arr)) return true;
+          const stringIds = arr.map((id) => id?.toString());
+          return stringIds.length === new Set(stringIds).size;
+        },
+        message: "Duplicate userId found in userIds array.",
+      },
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     reviews: {
       type: [
@@ -63,6 +92,10 @@ const DailyServiceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Indexes to speed up queries by membership (must be defined before model compilation)
+DailyServiceSchema.index({ societyIds: 1 });
+DailyServiceSchema.index({ userIds: 1 });
 
 const DailyService = mongoose.model("DailyService", DailyServiceSchema);
 export default DailyService;

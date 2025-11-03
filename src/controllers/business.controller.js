@@ -146,10 +146,9 @@ export const updateBusiness = async (req, res) => {
  */
 export const getAllBusinesses = async (req, res) => {
   try {
-    const businesses = await Business.find().lean();
-    const pendingReq = await Business.countDocuments({
-      "verificationStatus.status": "pending",
-    });
+    const businesses = await Business.find()
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .lean();
     const formatted = businesses.map((business) => ({
       ...business,
       createdAt: business.createdAt,
@@ -159,8 +158,6 @@ export const getAllBusinesses = async (req, res) => {
       success: true,
       code: res.statusCode,
       businesses: formatted,
-      pendingReq,
-      totalCount: businesses.length,
     });
   } catch (error) {
     console.error("Error in getAllBusinesses:", error);
