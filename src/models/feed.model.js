@@ -26,7 +26,12 @@ const FeedSchema = new mongoose.Schema(
       ref: "Society",
       required: true,
     },
+    flatNo: { type: String, trim: true },
+    towerName: { type: String, trim: true },
     description: { type: String, trim: true },
+    price: { type: String, trim: true },
+    quantity: { type: String, trim: true },
+
     // Poll-specific fields
     options: [
       {
@@ -41,10 +46,30 @@ const FeedSchema = new mongoose.Schema(
     //     option: String,
     //   },
     // ],
+
     // Event-specific fields
-    eventDate: Date, // For event
-    location: String, // For event
-    rsvps: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // For event
+    eventDate: { type: String, trim: true }, // For event
+    eventTime: { type: String, trim: true }, // For event
+    maxParticipants: { type: String, trim: true }, // For event
+    minParticipants: { type: String, trim: true }, // For event
+    location: { type: String, trim: true, default: "pune" }, // For event
+    eventDetails: {
+      freeChildren: { type: Boolean, default: false },
+      guests: { type: Boolean, default: false },
+      materials: { type: Boolean, default: false },
+      refreshments: { type: Boolean, default: false },
+    }, // For event
+    rsvps: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      validate: {
+        validator: function (arr) {
+          if (!Array.isArray(arr)) return true;
+          const stringIds = arr.map((id) => id?.toString());
+          return stringIds.length === new Set(stringIds).size;
+        },
+        message: "Duplicate user found in rsvps array.",
+      },
+    }, // For event
 
     // Comments: array of { user, text, createdAt }
     comments: [

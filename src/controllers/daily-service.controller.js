@@ -206,6 +206,54 @@ export const getHelperById = async (req, res) => {
   }
 };
 
+export const getAllApprovedDailyServices = async (req, res) => {
+  try {
+    const { societyId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(societyId)) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        error: "Invalid societyId",
+      });
+    }
+
+    const societyObjectId = new mongoose.Types.ObjectId(societyId);
+
+    const approvedServices = await DailyService.find({
+      societyIds: societyObjectId,
+      "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
+    })
+      .populate({
+        path: "createdBy",
+        select: "fullName phone profilePhotoUrl",
+      })
+      .populate({
+        path: "societyIds",
+        select: "-towers -totalFlats",
+      })
+      .populate({
+        path: "userIds",
+        select: "fullName phone profilePhotoUrl",
+      })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      code: res.statusCode,
+      dailyServices: approvedServices,
+      totalCount: approvedServices.length,
+    });
+  } catch (error) {
+    console.error("Error in getAllApprovedDailyServices:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching approved daily services",
+    });
+  }
+};
+
 export const updateDailyService = async (req, res) => {
   try {
     const { helperId } = req.params;

@@ -34,9 +34,37 @@ export const getFeedsBySocietyId = async (req, res) => {
     const { societyId } = req.params;
     const feeds = await Feed.find({ society: societyId })
       .populate("user", "fullName profilePhotoUrl flatNo tower")
+      .populate("rsvps", "fullName profilePhotoUrl email phone")
       //   .populate("comments.user", "fullName avatar")
       .sort({ createdAt: -1 });
     res.json({ success: true, feeds, code: res.statusCode });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: error.message, code: res.statusCode });
+  }
+};
+
+// Get a single feed by ID with all populated fields
+export const getFeedById = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const feed = await Feed.findById(feedId)
+      .populate("user", "fullName profilePhotoUrl flatNo tower email phone")
+      .populate("society", "name address city state pincode")
+      .populate("comments.user", "fullName profilePhotoUrl")
+      .populate("likes", "fullName profilePhotoUrl")
+      .populate("rsvps", "fullName profilePhotoUrl email phone");
+
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    res.json({ success: true, feed, code: res.statusCode });
   } catch (error) {
     res
       .status(500)
@@ -83,10 +111,58 @@ export const addComment = async (req, res) => {
         .json({ success: false, message: "Feed not found" });
     feed.comments.push({ user: userId, text });
     await feed.save();
-    await feed.populate("comments.user", "fullName avatar");
+    await feed.populate("comments.user", "fullName profilePhotoUrl");
     res.json({ success: true, comments: feed.comments });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// Update a feed by ID
+export const updateFeed = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const updates = req.body;
+
+    // Fields that should not be updated
+    const notAllowedUpdates = [
+      "_id",
+      "createdAt",
+      "updatedAt",
+      "user",
+      "society",
+    ];
+    notAllowedUpdates.forEach((field) => delete updates[field]);
+
+    const updatedFeed = await Feed.findByIdAndUpdate(feedId, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate("user", "fullName profilePhotoUrl flatNo tower email phone")
+      .populate("society", "name address city state pincode")
+      .populate("comments.user", "fullName profilePhotoUrl")
+      .populate("likes", "fullName profilePhotoUrl")
+      .populate("rsvps", "fullName profilePhotoUrl email phone");
+
+    if (!updatedFeed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      feed: updatedFeed,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
   }
 };
 
