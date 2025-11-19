@@ -201,6 +201,45 @@ export const fetchBusinessBySocietyId = async (req, res) => {
   }
 };
 
+export const getBusinessesByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        error: "Invalid userId",
+      });
+    }
+
+    const businesses = await Business.find({ userId })
+      .populate("societyId", "name address city state pincode")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = businesses.map((business) => ({
+      ...business,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt,
+    }));
+
+    res.json({
+      success: true,
+      code: res.statusCode,
+      businesses: formatted,
+      totalCount: businesses.length,
+    });
+  } catch (error) {
+    console.error("Error in getBusinessesByUserId:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error fetching businesses by userId",
+    });
+  }
+};
+
 export const getProductById = async (req, res) => {
   try {
     const { productId } = req.params;

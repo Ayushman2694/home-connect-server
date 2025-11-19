@@ -166,6 +166,98 @@ export const updateFeed = async (req, res) => {
   }
 };
 
+// Vote on a poll
+export const voteOnPoll = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const { userId, optionId } = req.body;
+
+    if (!userId || !optionId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and optionId are required",
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findById(feedId);
+
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    if (feed.type !== "poll") {
+      return res.status(400).json({
+        success: false,
+        message: "This feed is not a poll",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if option exists
+    const optionExists = feed.options.some((opt) => opt.id === optionId);
+    if (!optionExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid option ID",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if user already voted
+    const existingVoteIndex = feed.votes.findIndex(
+      (vote) => vote.userId.toString() === userId
+    );
+
+    if (existingVoteIndex !== -1) {
+      // Update existing vote
+      feed.votes[existingVoteIndex].optionId = optionId;
+      feed.votes[existingVoteIndex].createdAt = new Date();
+    } else {
+      // Add new vote
+      feed.votes.push({ userId, optionId });
+    }
+
+    await feed.save();
+    await feed.populate("votes.userId", "fullName profilePhotoUrl");
+
+    // Calculate vote results
+    const totalVotes = feed.votes.length;
+    const results = feed.options.map((option) => {
+      const voteCount = feed.votes.filter(
+        (vote) => vote.optionId === option.id
+      ).length;
+      const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+
+      return {
+        optionId: option.id,
+        optionName: option.name,
+        voteCount,
+        percentage: Math.round(percentage * 10) / 10, // Round to 1 decimal
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: existingVoteIndex !== -1 ? "Vote updated" : "Vote recorded",
+      totalVotes,
+      results,
+      userVote: { userId, optionId },
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
 // Delete a feed
 export const deleteFeed = async (req, res) => {
   try {

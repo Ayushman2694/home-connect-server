@@ -6,6 +6,7 @@ import {
   toggleLike,
   updateFeed,
   addComment,
+  voteOnPoll,
 } from "../controllers/feed.controller.js";
 
 const router = Router();
@@ -14,6 +15,7 @@ router.get("/getfeeds/:societyId", getFeedsBySocietyId);
 router.get("/getFeed/:feedId", getFeedById);
 router.post("/create", createFeeds);
 router.post("/comment/:feedId", addComment);
+router.post("/vote/:feedId", voteOnPoll);
 router.patch("/:feedId/like", toggleLike);
 router.patch("/update/:feedId", updateFeed);
 

@@ -51,10 +51,11 @@ export const createDailyService = async (req, res) => {
       if (userIdObjs.length) addToSet.userIds = { $each: userIdObjs };
 
       if (Object.keys(addToSet).length === 0) {
-        return res.status(200).json({
-          success: true,
-          code: res.statusCode,
-          message: "No new ids to add.",
+        return res.status(409).json({
+          success: false,
+          code: 409,
+          message: "Phone number already exists",
+          helperId: existingUser._id,
           dailyService: await existingUser.populate({
             path: "societyIds",
             select: "-towers -totalFlats",
@@ -72,6 +73,7 @@ export const createDailyService = async (req, res) => {
         success: true,
         code: res.statusCode,
         message: "Ids updated for existing daily service.",
+        helperId: updated._id,
         dailyService: await updated.populate({
           path: "societyIds",
           select: "-towers -totalFlats",

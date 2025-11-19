@@ -40,12 +40,18 @@ const FeedSchema = new mongoose.Schema(
         _id: false,
       },
     ], // For poll
-    // votes: [
-    //   {
-    //     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    //     option: String,
-    //   },
-    // ],
+    votes: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        optionId: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ], // For poll - stores user votes
 
     // Event-specific fields
     eventDate: { type: String, trim: true }, // For event
