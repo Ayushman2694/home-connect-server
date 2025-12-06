@@ -183,10 +183,6 @@ export const getUserById = async (req, res) => {
   }
 };
 
-/**
- * Sync user's businessIds array with all businesses where userId matches
- * @route PUT /api/user/:userId/sync-business-ids
- */
 export const syncUserBusinessIds = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -221,6 +217,58 @@ export const syncUserBusinessIds = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error syncing businessIds",
+    });
+  }
+};
+
+export const syncUserBusinessIdsWithStatus = async (req, res) => {
+  try {
+    console.log("Syncing user business IDs with status...");
+    const { userId } = req.params;
+    // Find all businesses for this user, select _id and verificationStatus
+    const businesses = await Business.find({ userId })
+      .select("_id verificationStatus.status")
+      .lean();
+    // Map to array of objects { id, verificationStatus } and ensure uniqueness by id
+    const seen = new Set();
+    const businessIds = [];
+    for (const b of businesses) {
+      if (!seen.has(String(b._id))) {
+        businessIds.push({
+          id: b._id,
+          verificationStatus: b.verificationStatus?.status || null,
+        });
+        seen.add(String(b._id));
+      }
+    }
+    // Update user's businessIds array
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { businessIds },
+      { new: true, runValidators: true }
+    ).populate({
+      path: "societyId",
+      select: "-towers -totalFlats",
+    });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "User not found",
+      });
+    }
+    res.json({
+      success: true,
+      code: res.statusCode,
+      message: "User's businessIds with status synced successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Error in syncUserBusinessIdsWithStatus:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error syncing businessIds with status",
     });
   }
 };

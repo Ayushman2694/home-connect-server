@@ -18,9 +18,10 @@ export const createBusiness = async (req, res) => {
       phone,
       userId,
       societyId,
+      profilePhotoUrl,
     } = req.body;
 
-    const newBusiness = new Business({
+    const newBusiness = await Business.create({
       title,
       category,
       description,
@@ -33,17 +34,18 @@ export const createBusiness = async (req, res) => {
       phone,
       userId,
       societyId,
+      profilePhotoUrl,
     });
 
-    await newBusiness.save();
+    const populatedBusiness = await Business.findById(newBusiness._id)
+      .populate("userId")
+      .lean();
 
     res.status(201).json({
       success: true,
       code: res.statusCode,
       message: "Business created successfully",
-      business: await newBusiness.populate({
-        path: "userId",
-      }),
+      business: populatedBusiness,
     });
   } catch (error) {
     console.error("Error in createBusiness:", error);
@@ -93,10 +95,15 @@ export const updateBusiness = async (req, res) => {
       });
     }
 
-    const business = await Business.findByIdAndUpdate(businessId, updateData, {
-      new: true, // Return the updated document
-      runValidators: true, // Run validation on update
-    }).lean();
+    const business = await Business.findByIdAndUpdate(
+      businessId,
+      { $set: updateData },
+      {
+        new: true, // Return the updated document
+        runValidators: true, // Run validation on update
+        lean: true,
+      }
+    );
 
     if (!business) {
       return res.status(404).json({
@@ -148,16 +155,12 @@ export const getAllBusinesses = async (req, res) => {
   try {
     const businesses = await Business.find()
       .populate("userId", "fullName phone profilePhotoUrl")
+      .select("-orders -catalogue -reviews -report")
       .lean();
-    const formatted = businesses.map((business) => ({
-      ...business,
-      createdAt: business.createdAt,
-      updatedAt: business.updatedAt,
-    }));
     res.json({
       success: true,
       code: res.statusCode,
-      businesses: formatted,
+      businesses,
     });
   } catch (error) {
     console.error("Error in getAllBusinesses:", error);
@@ -183,8 +186,8 @@ export const fetchBusinessBySocietyId = async (req, res) => {
     };
     const businesses = await Business.find(filter)
       .populate("userId", "fullName phone profilePhotoUrl")
+      .select("-orders -catalogue -reviews -report")
       .lean();
-
     res.json({
       success: true,
       code: res.statusCode,
@@ -215,19 +218,13 @@ export const getBusinessesByUserId = async (req, res) => {
 
     const businesses = await Business.find({ userId })
       .populate("societyId", "name address city state pincode")
+      .select("-orders -catalogue -reviews -report")
       .sort({ createdAt: -1 })
       .lean();
-
-    const formatted = businesses.map((business) => ({
-      ...business,
-      createdAt: business.createdAt,
-      updatedAt: business.updatedAt,
-    }));
-
     res.json({
       success: true,
       code: res.statusCode,
-      businesses: formatted,
+      businesses,
       totalCount: businesses.length,
     });
   } catch (error) {
@@ -263,5 +260,96 @@ export const getProductById = async (req, res) => {
       code: res.statusCode,
       error: "Error fetching product",
     });
+  }
+};
+
+// Add a catalogue item to a business
+export const addCatalogueItem = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const catalogueData = req.body;
+
+    // Use atomic $push for efficiency
+    const business = await Business.findByIdAndUpdate(
+      businessId,
+      { $push: { catalogue: catalogueData } },
+      { new: true, select: "catalogue", lean: true }
+    );
+    if (!business) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Business not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Catalogue item added",
+      catalogue: business.catalogue,
+    });
+  } catch (error) {
+    console.error("Error adding catalogue item:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to add catalogue item" });
+  }
+};
+
+// Get catalogue array by businessId
+export const getCatalogueByBusinessId = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const business = await Business.findById(businessId)
+      .select("catalogue")
+      .lean();
+    if (!business) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Business not found" });
+    }
+    res.status(200).json({ success: true, catalogue: business.catalogue });
+  } catch (error) {
+    console.error("Error fetching catalogue:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch catalogue" });
+  }
+};
+
+// Update a catalogue item by businessId and catalogueId
+export const updateCatalogueItem = async (req, res) => {
+  try {
+    const { businessId, catalogueId } = req.params;
+    const updateData = req.body;
+
+    // Use atomic update with positional operator
+    const business = await Business.findOneAndUpdate(
+      { _id: businessId, "catalogue._id": catalogueId },
+      {
+        $set: Object.fromEntries(
+          Object.entries(updateData).map(([k, v]) => [`catalogue.$.${k}`, v])
+        ),
+      },
+      {
+        new: true,
+        select: { catalogue: { $elemMatch: { _id: catalogueId } } },
+        lean: true,
+      }
+    );
+    if (!business || !business.catalogue || business.catalogue.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Catalogue item not found" });
+    }
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Catalogue item updated",
+        item: business.catalogue[0],
+      });
+  } catch (error) {
+    console.error("Error updating catalogue item:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to update catalogue item" });
   }
 };

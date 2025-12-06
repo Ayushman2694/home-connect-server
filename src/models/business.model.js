@@ -36,6 +36,30 @@ const BusinessOrderSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Catalogue schema for business
+const BusinessCatalogueSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    description: { type: String, trim: true },
+    price: { type: Number, required: true },
+    mrp: { type: Number },
+    images: [{ type: String, trim: true }], // Array of image URLs
+    unit: { type: String, trim: true }, // e.g., kg, piece
+    itemType: { type: String, trim: true }, // e.g., product, service
+    inStock: { type: String, default: "in-stock" },
+    rating: { type: Number, min: 1, max: 5 },
+    likeCount: { type: Number, default: 0 },
+    tags: [{ type: String, trim: true }],
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Business",
+      default: null,
+    },
+    // Add more fields as needed
+  },
+  { timestamps: true, _id: true }
+);
+
 const BusinessInfoSchema = new mongoose.Schema(
   {
     title: { type: String, trim: true },
@@ -68,6 +92,21 @@ const BusinessInfoSchema = new mongoose.Schema(
       sellingPrice: { type: String, default: "0" },
       discountPrcnt: { type: String, default: "0" },
       saveAmount: { type: String, default: "0" },
+    },
+    profilePhotoUrl: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: function (v) {
+          return (
+            !v ||
+            /^(http:\/\/www\.|https:\/\/www\.|http:\/\/|https:\/\/)?[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?$/.test(
+              v
+            )
+          );
+        },
+        message: (props) => `${props.value} is not a valid URL!`,
+      },
     },
     verificationStatus: {
       status: {
@@ -108,6 +147,7 @@ const BusinessInfoSchema = new mongoose.Schema(
     // Orders placed on this business
     orders: { type: [BusinessOrderSchema], default: [] },
     businessPhone: { type: String, trim: true }, // Optional business phone number
+    catalogue: { type: [BusinessCatalogueSchema], default: [] },
   },
   { timestamps: true }
 );

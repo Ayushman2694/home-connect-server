@@ -6,7 +6,11 @@ import {
   getProductById,
   getAllBusinesses,
   getBusinessesByUserId,
+  addCatalogueItem,
+  getCatalogueByBusinessId,
+  updateCatalogueItem,
 } from "../controllers/business.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -16,8 +20,19 @@ router.get("/fetch/:societyId", fetchBusinessBySocietyId);
 router.get("/user/:userId", getBusinessesByUserId);
 router.get("/product/:productId", getProductById);
 router.get("/all/:societyId", getAllBusinesses);
+router.get("/:businessId/catalogue", authenticate, getCatalogueByBusinessId);
 
 // Update business
 router.patch("/:businessId", updateBusiness);
+
+// Add catalogue item to a business
+router.post("/:businessId/catalogue", authenticate, addCatalogueItem);
+
+// Update a catalogue item for a business
+router.put(
+  "/:businessId/catalogue/:catalogueId",
+  authenticate,
+  updateCatalogueItem
+);
 
 export default router;

@@ -62,19 +62,18 @@ const UserSchema = new mongoose.Schema(
       ref: "Society",
       default: null,
     },
-    businessIds: {
-      type: [mongoose.Schema.Types.ObjectId],
-      ref: "Business",
-      validate: {
-        validator: function (arr) {
-          if (!Array.isArray(arr)) return true; // Accept null/undefined/empty
-          const stringIds = arr.map((id) => id.toString());
-          return stringIds.length === new Set(stringIds).size;
+    businessIds: [
+      {
+        id: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Business",
         },
-        message: "Duplicate businessId found in businessIds array.",
+        verificationStatus: {
+          type: String,
+          enum: ["pending", "approved", "rejected"],
+        },
       },
-      default: [],
-    },
+    ],
     // Lightweight pointers to a user's orders across sources
     orders: [
       {
