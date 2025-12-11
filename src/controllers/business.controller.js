@@ -38,7 +38,10 @@ export const createBusiness = async (req, res) => {
     });
 
     const populatedBusiness = await Business.findById(newBusiness._id)
-      .populate("userId")
+      .populate(
+        "userId",
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+      )
       .lean();
 
     res.status(201).json({
@@ -154,8 +157,8 @@ export const updateBusiness = async (req, res) => {
 export const getAllBusinesses = async (req, res) => {
   try {
     const businesses = await Business.find()
-      .populate("userId", "fullName phone profilePhotoUrl")
-      .select("-orders -catalogue -reviews -report")
+      .populate("userId", "fullName phone profilePhotoUrl flatNumber roles")
+      .select("-orders -reviews -report") // removed -catalogue
       .lean();
     res.json({
       success: true,
@@ -185,7 +188,10 @@ export const fetchBusinessBySocietyId = async (req, res) => {
       "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
     };
     const businesses = await Business.find(filter)
-      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate(
+        "userId",
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+      )
       .select("-orders -catalogue -reviews -report")
       .lean();
     res.json({
@@ -218,6 +224,10 @@ export const getBusinessesByUserId = async (req, res) => {
 
     const businesses = await Business.find({ userId })
       .populate("societyId", "name address city state pincode")
+      .populate(
+        "userId",
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+      )
       .select("-orders -catalogue -reviews -report")
       .sort({ createdAt: -1 })
       .lean();
@@ -339,13 +349,11 @@ export const updateCatalogueItem = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Catalogue item not found" });
     }
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Catalogue item updated",
-        item: business.catalogue[0],
-      });
+    res.status(200).json({
+      success: true,
+      message: "Catalogue item updated",
+      item: business.catalogue[0],
+    });
   } catch (error) {
     console.error("Error updating catalogue item:", error);
     res

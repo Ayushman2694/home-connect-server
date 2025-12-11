@@ -72,9 +72,7 @@ export const getAllDealsBySocietyId = async (req, res) => {
       "userId",
       "fullName phone profilePhotoUrl"
     );
-    const pendingReq = await WholesaleDeal.countDocuments({
-      "verificationStatus.status": VERIFICATION_STATUS.PENDING,
-    });
+    const pendingReq = await WholesaleDeal.countDocuments({ societyId });
     res.status(200).json({
       success: true,
       code: res.statusCode,
@@ -224,7 +222,7 @@ export const updateExpiredDeals = async (req, res) => {
         $set: {
           isDealActive: true,
           dealStatus: DEAL_STATUS.EXPIRED,
-          "verificationStatus.status": VERIFICATION_STATUS.REJECTED,
+          verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
         },
       }
     );
@@ -249,7 +247,6 @@ export const getDealById = async (req, res) => {
     const { dealId } = req.params;
     const deal = await WholesaleDeal.findOne({
       _id: dealId,
-      "verificationStatus.status": VERIFICATION_STATUS.APPROVED,
     }).populate("userId", "fullName phone profilePhotoUrl");
 
     if (!deal) {

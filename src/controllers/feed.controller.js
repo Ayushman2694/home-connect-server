@@ -272,3 +272,20 @@ export const deleteFeed = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Get all feeds by userId
+export const getFeedsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const feeds = await Feed.find({ user: userId })
+      .populate("user", "fullName profilePhotoUrl flatNo tower email phone")
+      .sort({ createdAt: -1 })
+      .lean();
+    res.status(200).json({ success: true, feeds });
+  } catch (error) {
+    console.error("Error in getFeedsByUserId:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Error fetching feeds by userId" });
+  }
+};

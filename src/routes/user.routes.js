@@ -5,6 +5,7 @@ import {
   getPendingUsersBySocietyId,
   getRequestByUserId,
   getUserById,
+  removeUser,
   syncUserBusinessIds,
   syncUserBusinessIdsWithStatus,
   updateUser,
@@ -20,7 +21,7 @@ router.patch("/:userId", updateUser);
 router.get("/:userId", getUserById);
 router.get("/sync/:userId", syncUserBusinessIds);
 router.get("/getPendingUsers/:societyId", getPendingUsersBySocietyId);
-// Sync user's businessIds array with id and verificationStatus
 router.put("/sync-status/:userId", authenticate, syncUserBusinessIdsWithStatus);
+router.delete("/:userId", authenticate, removeUser);
 
 export default router;
