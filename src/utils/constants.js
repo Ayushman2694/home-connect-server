@@ -4,6 +4,7 @@ export const USER_ROLES = {
   RESIDENT: "resident",
   BUSINESS: "business",
   ADMIN: "admin",
+  SUPER_ADMIN: "super_admin",
 };
 
 export const VERIFICATION_STATUS = {

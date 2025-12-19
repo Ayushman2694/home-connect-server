@@ -220,7 +220,7 @@ export const updateExpiredDeals = async (req, res) => {
       },
       {
         $set: {
-          isDealActive: true,
+          isDealActive: false,
           dealStatus: DEAL_STATUS.EXPIRED,
           verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
         },

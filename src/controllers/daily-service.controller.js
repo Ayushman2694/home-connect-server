@@ -14,6 +14,11 @@ export const createDailyService = async (req, res) => {
       averageRating,
       societyIds,
       userIds,
+      rate,
+      workingHours,
+      pricingRates,
+      address,
+      additionalInfo,
       createdBy,
       verificationStatus,
     } = req.body;
@@ -92,6 +97,11 @@ export const createDailyService = async (req, res) => {
       averageRating,
       societyIds: societyIdObjs,
       userIds: userIdObjs,
+      rate,
+      pricingRates,
+      additionalInfo,
+      workingHours,
+      address,
       createdBy,
       verificationStatus,
     });
@@ -293,6 +303,75 @@ export const updateDailyService = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Error updating helper",
+    });
+  }
+};
+
+// Add a review to a daily service and update averageRating
+export const addDailyServiceReview = async (req, res) => {
+  try {
+    const { helperId } = req.params;
+    const { userId, userName, rating, comment, profilePhotoUrl } = req.body;
+    if (!userId || !rating) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        error: "userId and rating are required",
+      });
+    }
+
+    // Add the new review
+    const pushResult = await DailyService.findByIdAndUpdate(
+      helperId,
+      {
+        $push: {
+          reviews: {
+            userId,
+            userName,
+            rating,
+            comment,
+            profilePhotoUrl,
+            createdAt: new Date(),
+          },
+        },
+      },
+      { new: true, select: "reviews", lean: true }
+    );
+    if (!pushResult) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "Helper not found",
+      });
+    }
+
+    // Calculate average rating
+    const allReviews = pushResult.reviews || [];
+    const avgRating =
+      allReviews.length > 0
+        ? (
+            allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length
+          ).toFixed(1)
+        : 0;
+
+    // Update averageRating in the model
+    await DailyService.findByIdAndUpdate(helperId, {
+      averageRating: avgRating,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Review added",
+      review: allReviews[allReviews.length - 1],
+      avgRating: parseFloat(avgRating),
+      totalReviews: allReviews.length,
+    });
+  } catch (error) {
+    console.error("Error in addDailyServiceReview:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Failed to add review",
     });
   }
 };

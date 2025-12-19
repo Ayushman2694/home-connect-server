@@ -9,6 +9,7 @@ import {
   addCatalogueItem,
   getCatalogueByBusinessId,
   updateCatalogueItem,
+  addOrUpdateBusinessReview,
 } from "../controllers/business.controller.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 
@@ -34,5 +35,7 @@ router.put(
   authenticate,
   updateCatalogueItem
 );
+// Add or update a review for a business
+router.post("/:businessId/review", authenticate, addOrUpdateBusinessReview);
 
 export default router;

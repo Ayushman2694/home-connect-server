@@ -21,6 +21,7 @@ export const createUser = async (req, res) => {
     if (existingUser) {
       return res.status(404).json({
         message: "User already exists",
+        userId: existingUser._id,
       });
     }
 

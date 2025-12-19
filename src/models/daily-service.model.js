@@ -1,6 +1,30 @@
 import mongoose from "mongoose";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 
+const WorkingHourSchema = new mongoose.Schema(
+  {
+    dayPreset: { type: String, required: true },
+    displayText: { type: String, required: true },
+    timeSlot: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const ReviewSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    profilePhotoUrl: { type: String, trim: true },
+    userName: { type: String, trim: true },
+    rating: { type: Number, min: 1, max: 5, required: true },
+    comment: { type: String, trim: true },
+  },
+  { timestamps: true, _id: true }
+);
+
 const DailyServiceSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -18,10 +42,19 @@ const DailyServiceSchema = new mongoose.Schema(
       },
     },
     serviceType: { type: String, trim: true },
+    address: { type: String, trim: true },
     categoryId: { type: String, trim: true },
     description: { type: String, trim: true },
     images: [{ type: String, trim: true }],
     averageRating: { type: Number, trim: true },
+    rate: { type: Number, trim: true },
+    pricingRates: [
+      {
+        rate: String,
+        subtext: String,
+        _id: false,
+      },
+    ],
     verificationStatus: {
       status: {
         type: String,
@@ -72,23 +105,9 @@ const DailyServiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
-    reviews: {
-      type: [
-        {
-          _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
-          userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
-          },
-          userName: { type: String, trim: true },
-          rating: { type: Number, min: 1, max: 5, required: true },
-          comment: { type: String, trim: true },
-          createdAt: { type: Date, default: Date.now },
-        },
-      ],
-      default: null,
-    },
+    additionalInfo: { type: String, trim: true },
+    reviews: { type: [ReviewSchema], default: [] },
+    workingHours: [WorkingHourSchema],
   },
   { timestamps: true }
 );

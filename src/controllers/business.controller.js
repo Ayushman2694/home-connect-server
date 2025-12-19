@@ -192,7 +192,6 @@ export const fetchBusinessBySocietyId = async (req, res) => {
         "userId",
         "fullName phone profilePhotoUrl flatNumber tower roles societyId"
       )
-      .select("-orders -catalogue -reviews -report")
       .lean();
     res.json({
       success: true,
@@ -359,5 +358,72 @@ export const updateCatalogueItem = async (req, res) => {
     res
       .status(500)
       .json({ success: false, error: "Failed to update catalogue item" });
+  }
+};
+
+// Add or update a review for a business (always add new review to array)
+export const addOrUpdateBusinessReview = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const { userId, userName, rating, comment, profilePhotoUrl } = req.body;
+    if (!userId || !rating) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        error: "userId and rating are required",
+      });
+    }
+
+    // Always add a new review to the array (do not update existing)
+    const pushResult = await Business.findByIdAndUpdate(
+      businessId,
+      {
+        $push: {
+          reviews: {
+            userId,
+            userName,
+            rating,
+            comment,
+            profilePhotoUrl,
+            createdAt: new Date(),
+          },
+        },
+      },
+      { new: true, select: { reviews: { $slice: -1 } }, lean: true }
+    );
+    if (!pushResult) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        error: "Business not found",
+      });
+    }
+
+    // Calculate average rating from all reviews
+    const allReviews = await Business.findById(businessId)
+      .select("reviews")
+      .lean();
+    const avgRating =
+      allReviews.reviews && allReviews.reviews.length > 0
+        ? (
+            allReviews.reviews.reduce((sum, r) => sum + r.rating, 0) /
+            allReviews.reviews.length
+          ).toFixed(2)
+        : 0;
+
+    return res.status(201).json({
+      success: true,
+      message: "Review added",
+      review: pushResult.reviews[pushResult.reviews.length - 1],
+      avgRating: parseFloat(avgRating),
+      totalReviews: allReviews.reviews ? allReviews.reviews.length : 0,
+    });
+  } catch (error) {
+    console.error("Error in addOrUpdateBusinessReview:", error);
+    res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Failed to add review",
+    });
   }
 };

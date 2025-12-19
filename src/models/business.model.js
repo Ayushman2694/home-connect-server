@@ -139,15 +139,21 @@ const BusinessInfoSchema = new mongoose.Schema(
           userName: { type: String, trim: true },
           rating: { type: Number, min: 1, max: 5, required: true },
           comment: { type: String, trim: true },
+          profilePhotoUrl: { type: String, trim: true },
           createdAt: { type: Date, default: Date.now },
         },
       ],
-      default: null,
+      default: [],
     },
+    avgRating: { type: Number, default: 0 },
     // Orders placed on this business
     orders: { type: [BusinessOrderSchema], default: [] },
     businessPhone: { type: String, trim: true }, // Optional business phone number
     catalogue: { type: [BusinessCatalogueSchema], default: [] },
+    shopTimings: {
+      id: { type: String, trim: true },
+      name: { type: String, trim: true },
+    },
   },
   { timestamps: true }
 );
