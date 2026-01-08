@@ -1,4 +1,5 @@
 import WholesaleDeal from "../models/wholesale-deal.model.js";
+import User from "../models/user.model.js";
 import { VERIFICATION_STATUS, DEAL_STATUS } from "../utils/constants.js";
 
 export const createWholesaleDeal = async (req, res) => {

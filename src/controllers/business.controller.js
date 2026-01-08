@@ -19,6 +19,8 @@ export const createBusiness = async (req, res) => {
       userId,
       societyId,
       profilePhotoUrl,
+      email,
+      gstNumber,
     } = req.body;
 
     const newBusiness = await Business.create({
@@ -35,6 +37,8 @@ export const createBusiness = async (req, res) => {
       userId,
       societyId,
       profilePhotoUrl,
+      email,
+      gstNumber,
     });
 
     const populatedBusiness = await Business.findById(newBusiness._id)

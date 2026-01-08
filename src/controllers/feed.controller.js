@@ -1,4 +1,6 @@
 import Feed from "../models/feed.model.js";
+import User from "../models/user.model.js";
+import mongoose from "mongoose";
 
 // Create a new feed (post, poll, event)
 export const createFeeds = async (req, res) => {
@@ -270,6 +272,174 @@ export const deleteFeed = async (req, res) => {
     res.json({ success: true, message: "Feed deleted" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Add or update RSVP for an event
+export const addOrUpdateRSVP = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const {
+      userId,
+      price = 0,
+      participants = 1,
+      profilePhotoUrl,
+      fullName,
+    } = req.body;
+
+    console.log("RSVP Request Body:", req.body);
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+        code: res.statusCode,
+      });
+    }
+
+    // Validate feedId and fetch feed with specific fields only
+    let feed = await Feed.findById(feedId);
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    if (feed.type !== "event") {
+      return res.status(400).json({
+        success: false,
+        message: "This feed is not an event",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if user already has an RSVP and get index
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingRSVPIndex = feed.rsvps.findIndex(
+      (rsvp) => rsvp.user.toString() === userObjectIdStr
+    );
+    const isUpdate = existingRSVPIndex !== -1;
+
+    console.log("Existing RSVP Index:", existingRSVPIndex);
+    console.log("Is Update:", isUpdate);
+    console.log("User ID to match:", userObjectIdStr);
+    console.log(
+      "RSVPs in feed:",
+      feed.rsvps.map((r) => ({
+        userId: r.user.toString(),
+        fullName: r.fullName,
+      }))
+    );
+
+    if (isUpdate) {
+      // Use atomic update for existing RSVP
+      feed = await Feed.findByIdAndUpdate(
+        feedId,
+        {
+          $set: {
+            "rsvps.$[elem].price": price,
+            "rsvps.$[elem].participants": participants,
+            "rsvps.$[elem].profilePhotoUrl": profilePhotoUrl,
+            "rsvps.$[elem].fullName": fullName,
+          },
+        },
+        {
+          arrayFilters: [{ "elem.user": new mongoose.Types.ObjectId(userId) }],
+          new: true,
+        }
+      );
+    } else {
+      // Push new RSVP
+      feed = await Feed.findByIdAndUpdate(
+        feedId,
+        {
+          $push: {
+            rsvps: {
+              user: userId,
+              price,
+              participants,
+              profilePhotoUrl,
+              fullName,
+            },
+          },
+        },
+        { new: true }
+      );
+    }
+
+    // Calculate total participants and update registeredParticipants
+    const totalParticipants = feed.rsvps.reduce(
+      (sum, rsvp) => sum + rsvp.participants,
+      0
+    );
+
+    // Update registeredParticipants
+    feed = await Feed.findByIdAndUpdate(
+      feedId,
+      { registeredParticipants: totalParticipants },
+      { new: true }
+    ); // Update User orders
+    try {
+      const feedObjectId = new mongoose.Types.ObjectId(feedId);
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+
+      // Check if user exists
+      const user = await User.findById(userObjectId);
+      if (!user) {
+        console.error(`User not found: ${userId}`);
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+          code: res.statusCode,
+        });
+      }
+
+      // Check if order exists in user's orders array
+      const existingOrderIndex = user.orders.findIndex(
+        (order) =>
+          order.sourceId &&
+          order.sourceId.toString() === feedObjectId.toString()
+      );
+
+      if (existingOrderIndex !== -1) {
+        // Update existing order
+        user.orders[existingOrderIndex].quantity = participants;
+        user.orders[existingOrderIndex].amount = price;
+        user.orders[existingOrderIndex].updatedAt = new Date();
+        await user.save();
+      } else {
+        // Add new order
+        user.orders.push({
+          sourceType: "event",
+          sourceId: feedObjectId,
+          orderId: new mongoose.Types.ObjectId(),
+          quantity: participants,
+          amount: price,
+          status: "pending",
+          updatedAt: new Date(),
+        });
+        await user.save();
+      }
+    } catch (userError) {
+      console.error("Error updating user orders:", userError);
+      // Don't fail the RSVP if user update fails, just log it
+    }
+
+    res.status(200).json({
+      success: true,
+      message: isUpdate ? "RSVP updated" : "RSVP added",
+      rsvps: feed.rsvps,
+      registeredParticipants: totalParticipants,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
   }
 };
 

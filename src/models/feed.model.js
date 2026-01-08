@@ -58,6 +58,7 @@ const FeedSchema = new mongoose.Schema(
     eventTime: { type: String, trim: true }, // For event
     maxParticipants: { type: String, trim: true }, // For event
     minParticipants: { type: String, trim: true }, // For event
+    registeredParticipants: { type: Number, default: 0 }, // For event
     location: { type: String, trim: true, default: "pune" }, // For event
     eventDetails: {
       freeChildren: { type: Boolean, default: false },
@@ -65,17 +66,20 @@ const FeedSchema = new mongoose.Schema(
       materials: { type: Boolean, default: false },
       refreshments: { type: Boolean, default: false },
     }, // For event
-    rsvps: {
-      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-      validate: {
-        validator: function (arr) {
-          if (!Array.isArray(arr)) return true;
-          const stringIds = arr.map((id) => id?.toString());
-          return stringIds.length === new Set(stringIds).size;
+    rsvps: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
         },
-        message: "Duplicate user found in rsvps array.",
+        price: { type: Number, default: 0 },
+        participants: { type: Number, default: 1 },
+        profilePhotoUrl: { type: String, trim: true },
+        fullName: { type: String, trim: true },
+        _id: false,
       },
-    }, // For event
+    ], // For event
 
     // Comments: array of { user, text, createdAt }
     comments: [

@@ -21,6 +21,19 @@ const UserSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid phone number!`,
       },
     },
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
+      validate: {
+        validator: function (v) {
+          return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        },
+        message: (props) => `${props.value} is not a valid email!`,
+      },
+    },
     roles: {
       type: [String],
       enum: Object.values(USER_ROLES),
@@ -79,7 +92,7 @@ const UserSchema = new mongoose.Schema(
       {
         sourceType: {
           type: String,
-          enum: ["wholesale", "business"],
+          enum: ["wholesale", "business", "event"],
           required: true,
         },
         sourceId: { type: mongoose.Schema.Types.ObjectId, required: true },

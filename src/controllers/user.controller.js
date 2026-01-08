@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
+import Feed from "../models/feed.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 export const createUser = async (req, res) => {
@@ -14,6 +15,7 @@ export const createUser = async (req, res) => {
       societyId,
       flatNumber,
       tower,
+      email,
     } = req.body;
 
     // Use static method from model
@@ -33,6 +35,7 @@ export const createUser = async (req, res) => {
       societyId,
       flatNumber,
       tower,
+      email,
     });
 
     await newUser.save();
@@ -314,17 +317,107 @@ export const getPendingUsersBySocietyId = async (req, res) => {
 export const removeUser = async (req, res) => {
   try {
     const { userId } = req.params;
+
+    // First, delete all feeds created by the user
+    const feedDeleteResult = await Feed.deleteMany({ user: userId });
+    console.log(
+      `Deleted ${feedDeleteResult.deletedCount} feeds for user ${userId}`
+    );
+
+    // Then, delete the user
     const user = await User.findByIdAndDelete(userId);
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
-    res
-      .status(200)
-      .json({ success: true, message: "User removed successfully" });
+
+    res.status(200).json({
+      success: true,
+      message: "User removed successfully",
+      feedsDeleted: feedDeleteResult.deletedCount,
+    });
   } catch (error) {
     console.error("Error in removeUser:", error);
     res.status(500).json({ success: false, message: "Error removing user" });
+  }
+};
+
+// Fetch logged-in user's orders
+export const getUserOrders = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid userId",
+        code: res.statusCode,
+      });
+    }
+
+    const user = await User.findById(userId).select("orders").lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+        code: res.statusCode,
+      });
+    }
+
+    // Populate sourceId references based on sourceType
+    const ordersWithDetails = await Promise.all(
+      user.orders.map(async (order) => {
+        try {
+          if (order.sourceType === "business") {
+            const business = await Business.findById(order.sourceId)
+              .select("title category profilePhotoUrl price")
+              .lean();
+            return {
+              ...order,
+              source: business,
+            };
+          } else if (order.sourceType === "wholesale") {
+            const wholesaleDeal = await mongoose
+              .model("WholesaleDeal")
+              .findById(order.sourceId)
+              .select("title price quantity")
+              .lean();
+            return {
+              ...order,
+              source: wholesaleDeal,
+            };
+          } else if (order.sourceType === "event") {
+            const feed = await mongoose
+              .model("Feed")
+              .findById(order.sourceId)
+              .select("title eventDate eventTime price")
+              .lean();
+            return {
+              ...order,
+              source: feed,
+            };
+          }
+          return order;
+        } catch (err) {
+          console.error(`Error populating order ${order._id}:`, err);
+          return order;
+        }
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      orders: ordersWithDetails,
+      totalOrders: ordersWithDetails.length,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in getUserOrders:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching user orders",
+      code: res.statusCode,
+    });
   }
 };
