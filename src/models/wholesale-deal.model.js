@@ -82,10 +82,18 @@ const WholesaleDealSchema = new mongoose.Schema(
       ref: "Society",
       default: null,
     },
-    report: {
-      reason: [{ type: String, trim: true }],
-      totalReportCount: { type: Number, default: 0 },
-    },
+    report: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        reason: { type: String, trim: true, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    totalReportCount: { type: Number, default: 0 },
     reviews: {
       type: [
         {

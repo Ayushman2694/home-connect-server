@@ -27,6 +27,10 @@ export const createUser = async (req, res) => {
       });
     }
 
+    // Sanitize email: convert empty or whitespace-only strings to undefined
+    const sanitizedEmail =
+      typeof email === "string" && email.trim() ? email.trim().toLowerCase() : undefined;
+
     const newUser = new User({
       fullName,
       phone,
@@ -35,7 +39,7 @@ export const createUser = async (req, res) => {
       societyId,
       flatNumber,
       tower,
-      email,
+      ...(sanitizedEmail ? { email: sanitizedEmail } : {}),
     });
 
     await newUser.save();
@@ -116,6 +120,19 @@ export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = { ...req.body };
+    // Sanitize email in updates: remove empty/whitespace-only email to avoid duplicate empty-string index errors
+    if (Object.prototype.hasOwnProperty.call(updates, 'email')) {
+      if (typeof updates.email === 'string') {
+        const trimmed = updates.email.trim();
+        if (!trimmed) {
+          delete updates.email;
+        } else {
+          updates.email = trimmed.toLowerCase();
+        }
+      } else {
+        delete updates.email;
+      }
+    }
     if (updates.societyId) {
       if (mongoose.Types.ObjectId.isValid(updates.societyId)) {
         updates.societyId = new mongoose.Types.ObjectId(updates.societyId);

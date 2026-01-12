@@ -459,3 +459,188 @@ export const getFeedsByUserId = async (req, res) => {
       .json({ success: false, error: "Error fetching feeds by userId" });
   }
 };
+
+// Remove RSVP from an event
+export const removeRSVP = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+        code: res.statusCode,
+      });
+    }
+
+    // Validate feedId and fetch feed
+    let feed = await Feed.findById(feedId);
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    if (feed.type !== "event") {
+      return res.status(400).json({
+        success: false,
+        message: "This feed is not an event",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if user has an RSVP
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingRSVPIndex = feed.rsvps.findIndex(
+      (rsvp) => rsvp.user.toString() === userObjectIdStr
+    );
+
+    if (existingRSVPIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "RSVP not found for this user",
+        code: res.statusCode,
+      });
+    }
+
+    // Remove RSVP using atomic operation
+    feed = await Feed.findByIdAndUpdate(
+      feedId,
+      {
+        $pull: {
+          rsvps: { user: new mongoose.Types.ObjectId(userId) },
+        },
+      },
+      { new: true }
+    );
+
+    // Calculate total participants after removal
+    const totalParticipants = feed.rsvps.reduce(
+      (sum, rsvp) => sum + rsvp.participants,
+      0
+    );
+
+    // Update registeredParticipants
+    feed = await Feed.findByIdAndUpdate(
+      feedId,
+      { registeredParticipants: totalParticipants },
+      { new: true }
+    );
+
+    // Remove order from User's orders array
+    try {
+      const feedObjectId = new mongoose.Types.ObjectId(feedId);
+      const userObjectId = new mongoose.Types.ObjectId(userId);
+
+      await User.findByIdAndUpdate(
+        userObjectId,
+        {
+          $pull: {
+            orders: {
+              sourceId: feedObjectId,
+              sourceType: "event",
+            },
+          },
+        },
+        { new: true }
+      );
+    } catch (userError) {
+      console.error("Error removing order from user:", userError);
+      // Don't fail the RSVP removal if user update fails, just log it
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "RSVP removed successfully",
+      rsvps: feed.rsvps,
+      registeredParticipants: totalParticipants,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
+// Report a feed
+export const reportFeed = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and reason are required",
+        code: res.statusCode,
+      });
+    }
+
+    // Validate feedId
+    if (!mongoose.Types.ObjectId.isValid(feedId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid feedId",
+        code: res.statusCode,
+      });
+    }
+
+    // Fetch the feed
+    const feed = await Feed.findById(feedId);
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if user has already reported this feed
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingReport = feed.report.find(
+      (report) => report.userId.toString() === userObjectIdStr
+    );
+
+    if (existingReport) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reported this feed",
+        code: res.statusCode,
+      });
+    }
+
+    // Add new report
+    feed.report.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      reason,
+      createdAt: new Date(),
+    });
+
+    // Increment totalReportCount
+    feed.totalReportCount += 1;
+
+    // Save the feed
+    await feed.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Feed reported successfully",
+      totalReportCount: feed.totalReportCount,
+      reports: feed.report,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in reportFeed:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};

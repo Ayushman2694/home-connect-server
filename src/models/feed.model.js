@@ -26,6 +26,18 @@ const FeedSchema = new mongoose.Schema(
       ref: "Society",
       required: true,
     },
+    report: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        reason: { type: String, trim: true, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    totalReportCount: { type: Number, default: 0 },
     flatNo: { type: String, trim: true },
     towerName: { type: String, trim: true },
     description: { type: String, trim: true },

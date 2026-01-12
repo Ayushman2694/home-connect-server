@@ -23,8 +23,6 @@ const UserSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      unique: true,
-      sparse: true,
       trim: true,
       lowercase: true,
       validate: {
@@ -45,6 +43,18 @@ const UserSchema = new mongoose.Schema(
         message: "At least one role is required",
       },
     },
+    report: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        reason: { type: String, trim: true, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    totalReportCount: { type: Number, default: 0 },
     profilePhotoUrl: {
       type: String,
       trim: true,

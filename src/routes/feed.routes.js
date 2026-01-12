@@ -10,6 +10,8 @@ import {
   getFeedsByUserId,
   deleteFeed,
   addOrUpdateRSVP,
+  removeRSVP,
+  reportFeed,
 } from "../controllers/feed.controller.js";
 
 const router = Router();
@@ -21,6 +23,8 @@ router.post("/create", createFeeds);
 router.post("/comment/:feedId", addComment);
 router.post("/vote/:feedId", voteOnPoll);
 router.post("/rsvp/:feedId", addOrUpdateRSVP);
+router.post("/report/:feedId", reportFeed);
+router.delete("/rsvp/:feedId", removeRSVP);
 router.patch("/:feedId/like", toggleLike);
 router.patch("/update/:feedId", updateFeed);
 router.delete("/:feedId", deleteFeed);
