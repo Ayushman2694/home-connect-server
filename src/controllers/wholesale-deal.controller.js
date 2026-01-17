@@ -1,6 +1,8 @@
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import User from "../models/user.model.js";
+import mongoose from "mongoose";
 import { VERIFICATION_STATUS, DEAL_STATUS } from "../utils/constants.js";
+import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 
 export const createWholesaleDeal = async (req, res) => {
   try {
@@ -286,5 +288,93 @@ export const getDealsByUserId = async (req, res) => {
     res
       .status(500)
       .json({ success: false, code: res.statusCode, message: error.message });
+  }
+};
+
+// Report a wholesale deal
+export const reportDeal = async (req, res) => {
+  try {
+    const { dealId } = req.params;
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and reason are required",
+        code: res.statusCode,
+      });
+    }
+
+    // Daily report limit logic (shared utility)
+    const reportsToday = await getUserReportsToday(userId);
+    if (reportsToday >= 3) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "You can only report up to 3 items per day. Try again tomorrow.",
+        code: res.statusCode,
+      });
+    }
+
+    // Validate dealId
+    if (!mongoose.Types.ObjectId.isValid(dealId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid dealId",
+        code: res.statusCode,
+      });
+    }
+
+    // Fetch the deal
+    const deal = await WholesaleDeal.findById(dealId);
+    if (!deal) {
+      return res.status(404).json({
+        success: false,
+        message: "Deal not found",
+        code: res.statusCode,
+      });
+    }
+
+    // Check if user has already reported this deal
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingReport = deal.report.find(
+      (report) => report.userId.toString() === userObjectIdStr
+    );
+
+    if (existingReport) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reported this deal",
+        code: res.statusCode,
+      });
+    }
+
+    // Add new report
+    deal.report.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      reason,
+      createdAt: new Date(),
+    });
+
+    // Increment totalReportCount
+    deal.totalReportCount += 1;
+
+    // Save the deal
+    await deal.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Deal reported successfully",
+      totalReportCount: deal.totalReportCount,
+      reports: deal.report,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in reportDeal:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
   }
 };

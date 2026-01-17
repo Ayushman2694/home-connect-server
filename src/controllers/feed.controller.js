@@ -1,6 +1,7 @@
 import Feed from "../models/feed.model.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
+import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 
 // Create a new feed (post, poll, event)
 export const createFeeds = async (req, res) => {
@@ -210,19 +211,21 @@ export const voteOnPoll = async (req, res) => {
       });
     }
 
-    // Check if user already voted
+    // Check if user already voted - do not allow multiple votes
     const existingVoteIndex = feed.votes.findIndex(
       (vote) => vote.userId.toString() === userId
     );
 
     if (existingVoteIndex !== -1) {
-      // Update existing vote
-      feed.votes[existingVoteIndex].optionId = optionId;
-      feed.votes[existingVoteIndex].createdAt = new Date();
-    } else {
-      // Add new vote
-      feed.votes.push({ userId, optionId });
+      return res.status(409).json({
+        success: false,
+        message: "You have already voted on this poll",
+        code: res.statusCode,
+      });
     }
+
+    // Add new vote
+    feed.votes.push({ userId, optionId });
 
     await feed.save();
     await feed.populate("votes.userId", "fullName profilePhotoUrl");
@@ -245,7 +248,7 @@ export const voteOnPoll = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: existingVoteIndex !== -1 ? "Vote updated" : "Vote recorded",
+      message: "Vote recorded",
       totalVotes,
       results,
       userVote: { userId, optionId },
@@ -611,6 +614,17 @@ export const reportFeed = async (req, res) => {
       return res.status(409).json({
         success: false,
         message: "You have already reported this feed",
+        code: res.statusCode,
+      });
+    }
+
+    // --- Daily report limit logic (shared utility) ---
+    const reportsToday = await getUserReportsToday(userId);
+    if (reportsToday >= 3) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "You can only report up to 3 items per day. Try again tomorrow.",
         code: res.statusCode,
       });
     }

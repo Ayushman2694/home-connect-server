@@ -80,6 +80,11 @@ const BusinessInfoSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
       default: null,
+      set: function (v) {
+        return v && typeof v === "string" && v.trim()
+          ? v.trim().toLowerCase()
+          : null;
+      },
       validate: {
         validator: function (v) {
           return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);

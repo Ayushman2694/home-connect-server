@@ -52,18 +52,31 @@ const FeedSchema = new mongoose.Schema(
         _id: false,
       },
     ], // For poll
-    votes: [
-      {
-        userId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          required: true,
+    votes: {
+      type: [
+        {
+          userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          optionId: { type: String, required: true },
+          createdAt: { type: Date, default: Date.now },
+          _id: false,
         },
-        optionId: { type: String, required: true },
-        createdAt: { type: Date, default: Date.now },
-        _id: false,
+      ],
+      // Ensure a userId appears at most once in votes array
+      validate: {
+        validator: function (arr) {
+          if (!Array.isArray(arr)) return true;
+          const ids = arr
+            .map((v) => (v.userId ? v.userId.toString() : null))
+            .filter(Boolean);
+          return ids.length === new Set(ids).size;
+        },
+        message: "Duplicate userId found in votes array.",
       },
-    ], // For poll - stores user votes
+    }, // For poll - stores user votes
 
     // Event-specific fields
     eventDate: { type: String, trim: true }, // For event

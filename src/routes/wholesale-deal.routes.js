@@ -7,6 +7,7 @@ import {
   removeDeal,
   updateDeal,
   updateExpiredDeals,
+  reportDeal,
 } from "../controllers/wholesale-deal.controller.js";
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.get("/getDeal/:dealId", getDealById);
 router.get("/getDealByUser/:userId", getDealsByUserId);
 router.get("/updateExpired/:societyId", updateExpiredDeals);
 router.post("/create", createWholesaleDeal);
+router.post("/report/:dealId", reportDeal);
 router.patch("/:dealId", updateDeal);
 router.delete("/:dealId", removeDeal);
 

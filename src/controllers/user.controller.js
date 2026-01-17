@@ -29,7 +29,9 @@ export const createUser = async (req, res) => {
 
     // Sanitize email: convert empty or whitespace-only strings to undefined
     const sanitizedEmail =
-      typeof email === "string" && email.trim() ? email.trim().toLowerCase() : undefined;
+      typeof email === "string" && email.trim()
+        ? email.trim().toLowerCase()
+        : undefined;
 
     const newUser = new User({
       fullName,
@@ -121,8 +123,8 @@ export const updateUser = async (req, res) => {
     const { userId } = req.params;
     const updates = { ...req.body };
     // Sanitize email in updates: remove empty/whitespace-only email to avoid duplicate empty-string index errors
-    if (Object.prototype.hasOwnProperty.call(updates, 'email')) {
-      if (typeof updates.email === 'string') {
+    if (Object.prototype.hasOwnProperty.call(updates, "email")) {
+      if (typeof updates.email === "string") {
         const trimmed = updates.email.trim();
         if (!trimmed) {
           delete updates.email;
@@ -434,6 +436,77 @@ export const getUserOrders = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching user orders",
+      code: res.statusCode,
+    });
+  }
+};
+
+// Report a user
+export const reportUser = async (req, res) => {
+  try {
+    const { userId: reportedUserId } = req.params;
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and reason are required",
+        code: res.statusCode,
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(reportedUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid userId in params",
+        code: res.statusCode,
+      });
+    }
+
+    const reportedUser = await User.findById(reportedUserId);
+    if (!reportedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+        code: res.statusCode,
+      });
+    }
+
+    const reporterObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingReport = reportedUser.report.find(
+      (report) => report.userId.toString() === reporterObjectIdStr
+    );
+
+    if (existingReport) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reported this user",
+        code: res.statusCode,
+      });
+    }
+
+    reportedUser.report.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      reason,
+      createdAt: new Date(),
+    });
+
+    reportedUser.totalReportCount += 1;
+
+    await reportedUser.save();
+
+    res.status(200).json({
+      success: true,
+      message: "User reported successfully",
+      totalReportCount: reportedUser.totalReportCount,
+      reports: reportedUser.report,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in reportUser:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
       code: res.statusCode,
     });
   }

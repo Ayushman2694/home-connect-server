@@ -1,6 +1,7 @@
 import DailyService from "../models/daily-service.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 import mongoose from "mongoose";
+import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 
 export const createDailyService = async (req, res) => {
   try {
@@ -372,6 +373,88 @@ export const addDailyServiceReview = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Failed to add review",
+    });
+  }
+};
+
+// Report a daily service helper
+export const reportDailyService = async (req, res) => {
+  try {
+    const { helperId } = req.params;
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and reason are required",
+        code: res.statusCode,
+      });
+    }
+
+    // Daily report limit logic (shared utility)
+    const reportsToday = await getUserReportsToday(userId);
+    if (reportsToday >= 3) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "You can only report up to 3 items per day. Try again tomorrow.",
+        code: res.statusCode,
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(helperId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid helperId",
+        code: res.statusCode,
+      });
+    }
+
+    const helper = await DailyService.findById(helperId);
+    if (!helper) {
+      return res.status(404).json({
+        success: false,
+        message: "Helper not found",
+        code: res.statusCode,
+      });
+    }
+
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingReport = helper.report.find(
+      (report) => report.userId.toString() === userObjectIdStr
+    );
+
+    if (existingReport) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reported this helper",
+        code: res.statusCode,
+      });
+    }
+
+    helper.report.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      reason,
+      createdAt: new Date(),
+    });
+
+    helper.totalReportCount += 1;
+
+    await helper.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Helper reported successfully",
+      totalReportCount: helper.totalReportCount,
+      reports: helper.report,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in reportDailyService:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
     });
   }
 };

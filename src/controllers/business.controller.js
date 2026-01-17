@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Business from "../models/business.model.js";
-import User from "../models/user.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -428,6 +428,88 @@ export const addOrUpdateBusinessReview = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Failed to add review",
+    });
+  }
+};
+
+// Report a business
+export const reportBusiness = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const { userId, reason } = req.body;
+
+    if (!userId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and reason are required",
+        code: res.statusCode,
+      });
+    }
+
+    // Daily report limit logic (shared utility)
+    const reportsToday = await getUserReportsToday(userId);
+    if (reportsToday >= 3) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "You can only report up to 3 items per day. Try again tomorrow.",
+        code: res.statusCode,
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(businessId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid businessId",
+        code: res.statusCode,
+      });
+    }
+
+    const business = await Business.findById(businessId);
+    if (!business) {
+      return res.status(404).json({
+        success: false,
+        message: "Business not found",
+        code: res.statusCode,
+      });
+    }
+
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const existingReport = business.report.find(
+      (report) => report.userId.toString() === userObjectIdStr
+    );
+
+    if (existingReport) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reported this business",
+        code: res.statusCode,
+      });
+    }
+
+    business.report.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      reason,
+      createdAt: new Date(),
+    });
+
+    business.totalReportCount += 1;
+
+    await business.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Business reported successfully",
+      totalReportCount: business.totalReportCount,
+      reports: business.report,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in reportBusiness:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
     });
   }
 };
