@@ -5,6 +5,7 @@ const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   quantity: { type: Number, required: true },
   amount: { type: Number, required: true },
+  dealerName: { type: String, required: true },
   status: {
     type: String,
     enum: ["pending", "confirmed", "cancelled", "delivered"],

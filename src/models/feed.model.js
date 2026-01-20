@@ -80,6 +80,7 @@ const FeedSchema = new mongoose.Schema(
 
     // Event-specific fields
     eventDate: { type: String, trim: true }, // For event
+    regDeadline: { type: String, trim: true }, // For event
     eventTime: { type: String, trim: true }, // For event
     maxParticipants: { type: String, trim: true }, // For event
     minParticipants: { type: String, trim: true }, // For event
