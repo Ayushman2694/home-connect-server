@@ -13,9 +13,10 @@ export const createUser = async (req, res) => {
       roles,
       profilePhotoUrl,
       societyId,
-      flatNumber,
+      flatNo,
       tower,
       email,
+      isAddressVerified,
     } = req.body;
 
     // Use static method from model
@@ -39,8 +40,9 @@ export const createUser = async (req, res) => {
       roles,
       profilePhotoUrl,
       societyId,
-      flatNumber,
+      flatNo,
       tower,
+      isAddressVerified,
       ...(sanitizedEmail ? { email: sanitizedEmail } : {}),
     });
 
@@ -48,10 +50,12 @@ export const createUser = async (req, res) => {
 
     return res.status(201).json({
       message: "User created successfully",
+      // userId: newUser._id,
       newUser: await newUser.populate({
         path: "societyId",
         select: "-towers -totalFlats",
       }),
+      code: res.statusCode,
     });
   } catch (error) {
     console.error("Error in create user controller:", error);
@@ -216,7 +220,7 @@ export const syncUserBusinessIds = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       userId,
       { businessIds },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).populate({
       path: "societyId",
       select: "-towers -totalFlats",
@@ -268,7 +272,7 @@ export const syncUserBusinessIdsWithStatus = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       userId,
       { businessIds },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).populate({
       path: "societyId",
       select: "-towers -totalFlats",
@@ -340,7 +344,7 @@ export const removeUser = async (req, res) => {
     // First, delete all feeds created by the user
     const feedDeleteResult = await Feed.deleteMany({ user: userId });
     console.log(
-      `Deleted ${feedDeleteResult.deletedCount} feeds for user ${userId}`
+      `Deleted ${feedDeleteResult.deletedCount} feeds for user ${userId}`,
     );
 
     // Then, delete the user
@@ -422,7 +426,7 @@ export const getUserOrders = async (req, res) => {
           console.error(`Error populating order ${order._id}:`, err);
           return order;
         }
-      })
+      }),
     );
 
     res.status(200).json({
@@ -474,7 +478,7 @@ export const reportUser = async (req, res) => {
 
     const reporterObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingReport = reportedUser.report.find(
-      (report) => report.userId.toString() === reporterObjectIdStr
+      (report) => report.userId.toString() === reporterObjectIdStr,
     );
 
     if (existingReport) {

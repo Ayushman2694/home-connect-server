@@ -21,7 +21,21 @@ export const createBusiness = async (req, res) => {
       profilePhotoUrl,
       email,
       gstNumber,
+      verificationStatus,
     } = req.body;
+
+    // Check if user already has 2 businesses (regardless of phone number)
+    if (userId) {
+      const existingBusinessCount = await Business.countDocuments({ userId });
+
+      if (existingBusinessCount >= 2) {
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: "Business should not exceed more than 2",
+        });
+      }
+    }
 
     const newBusiness = await Business.create({
       title,
@@ -39,12 +53,13 @@ export const createBusiness = async (req, res) => {
       profilePhotoUrl,
       email,
       gstNumber,
+      verificationStatus,
     });
 
     const populatedBusiness = await Business.findById(newBusiness._id)
       .populate(
         "userId",
-        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId",
       )
       .lean();
 
@@ -109,7 +124,7 @@ export const updateBusiness = async (req, res) => {
         new: true, // Return the updated document
         runValidators: true, // Run validation on update
         lean: true,
-      }
+      },
     );
 
     if (!business) {
@@ -194,7 +209,7 @@ export const fetchBusinessBySocietyId = async (req, res) => {
     const businesses = await Business.find(filter)
       .populate(
         "userId",
-        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId",
       )
       .lean();
     res.json({
@@ -229,7 +244,7 @@ export const getBusinessesByUserId = async (req, res) => {
       .populate("societyId", "name address city state pincode")
       .populate(
         "userId",
-        "fullName phone profilePhotoUrl flatNumber tower roles societyId"
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId",
       )
       .select("-orders -catalogue -reviews -report")
       .sort({ createdAt: -1 })
@@ -286,7 +301,7 @@ export const addCatalogueItem = async (req, res) => {
     const business = await Business.findByIdAndUpdate(
       businessId,
       { $push: { catalogue: catalogueData } },
-      { new: true, select: "catalogue", lean: true }
+      { new: true, select: "catalogue", lean: true },
     );
     if (!business) {
       return res
@@ -338,14 +353,14 @@ export const updateCatalogueItem = async (req, res) => {
       { _id: businessId, "catalogue._id": catalogueId },
       {
         $set: Object.fromEntries(
-          Object.entries(updateData).map(([k, v]) => [`catalogue.$.${k}`, v])
+          Object.entries(updateData).map(([k, v]) => [`catalogue.$.${k}`, v]),
         ),
       },
       {
         new: true,
         select: { catalogue: { $elemMatch: { _id: catalogueId } } },
         lean: true,
-      }
+      },
     );
     if (!business || !business.catalogue || business.catalogue.length === 0) {
       return res
@@ -393,7 +408,7 @@ export const addOrUpdateBusinessReview = async (req, res) => {
           },
         },
       },
-      { new: true, select: { reviews: { $slice: -1 } }, lean: true }
+      { new: true, select: { reviews: { $slice: -1 } }, lean: true },
     );
     if (!pushResult) {
       return res.status(404).json({
@@ -476,7 +491,7 @@ export const reportBusiness = async (req, res) => {
 
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingReport = business.report.find(
-      (report) => report.userId.toString() === userObjectIdStr
+      (report) => report.userId.toString() === userObjectIdStr,
     );
 
     if (existingReport) {
