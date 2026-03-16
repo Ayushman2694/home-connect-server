@@ -515,3 +515,60 @@ export const reportUser = async (req, res) => {
     });
   }
 };
+
+// Check if user is authorized to add a new business
+export const isUserBusinessAllowed = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid userId format",
+        code: res.statusCode,
+      });
+    }
+
+    const user = await User.findById(userId).select("roles businessIds");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+        code: res.statusCode,
+      });
+    }
+
+    const businessCount = user.businessIds ? user.businessIds.length : 0;
+    const isGuest = user.roles.includes("guest");
+
+    let isAuthorized = true;
+    let reason = "";
+
+    // If user is a guest and has at least 1 business, cannot create new business
+    if (isGuest && businessCount >= 1) {
+      isAuthorized = false;
+      reason = "Guest users can only have 1 business";
+    }
+    // If user has any other role and has 2 or more businesses, cannot create 3rd business
+    else if (!isGuest && businessCount >= 2) {
+      isAuthorized = false;
+      reason = "Users with this role can only have 2 businesses";
+    }
+
+    res.status(200).json({
+      success: true,
+      isAuthorized,
+      businessCount,
+      userRole: user.roles,
+      reason: reason || "User is authorized to create a new business",
+      code: res.statusCode,
+    });
+  } catch (error) {
+    console.error("Error in checkBusinessCreationAuthorization:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error checking business creation authorization",
+      code: res.statusCode,
+    });
+  }
+};

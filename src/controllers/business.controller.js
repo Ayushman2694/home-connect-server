@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Business from "../models/business.model.js";
+import User from "../models/user.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 
@@ -62,6 +63,41 @@ export const createBusiness = async (req, res) => {
         "fullName phone profilePhotoUrl flatNumber tower roles societyId",
       )
       .lean();
+
+    // Sync user's businessIds with verification status
+    if (userId) {
+      try {
+        const businesses = await Business.find({ userId })
+          .select("_id verificationStatus.status")
+          .lean();
+
+        const seen = new Set();
+        const businessIds = [];
+        for (const b of businesses) {
+          if (!seen.has(String(b._id))) {
+            businessIds.push({
+              id: b._id,
+              verificationStatus: b.verificationStatus?.status || null,
+            });
+            seen.add(String(b._id));
+          }
+        }
+
+        await User.findByIdAndUpdate(
+          userId,
+          { businessIds },
+          { new: true, runValidators: true },
+        );
+
+        console.log(`User ${userId} businessIds synced successfully`);
+      } catch (syncError) {
+        console.error(
+          `Error syncing businessIds for user ${userId}:`,
+          syncError,
+        );
+        // Don't fail the business creation if sync fails, just log the error
+      }
+    }
 
     res.status(201).json({
       success: true,

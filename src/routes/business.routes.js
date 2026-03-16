@@ -34,7 +34,7 @@ router.post("/:businessId/catalogue", authenticate, addCatalogueItem);
 router.put(
   "/:businessId/catalogue/:catalogueId",
   authenticate,
-  updateCatalogueItem
+  updateCatalogueItem,
 );
 // Add or update a review for a business
 router.post("/:businessId/review", authenticate, addOrUpdateBusinessReview);

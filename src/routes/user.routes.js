@@ -11,6 +11,7 @@ import {
   updateUser,
   getUserOrders,
   reportUser,
+  isUserBusinessAllowed,
 } from "../controllers/user.controller.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 const router = express.Router();
@@ -25,6 +26,7 @@ router.patch("/:userId", updateUser);
 router.get("/:userId", getUserById);
 router.get("/sync/:userId", syncUserBusinessIds);
 router.get("/getPendingUsers/:societyId", getPendingUsersBySocietyId);
+router.get("/permission/:userId", authenticate, isUserBusinessAllowed);
 router.put("/sync-status/:userId", authenticate, syncUserBusinessIdsWithStatus);
 router.delete("/:userId", authenticate, removeUser);
 

@@ -17,6 +17,7 @@ const SocietySchema = new mongoose.Schema({
   completeAddress: { type: String, default: "" },
   city: { type: String, default: "" },
   state: { type: String, default: "" },
+  locality: { type: String, default: "" },
 });
 
 export const Society = mongoose.model("Society", SocietySchema);
