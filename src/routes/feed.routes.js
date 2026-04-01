@@ -12,6 +12,8 @@ import {
   addOrUpdateRSVP,
   removeRSVP,
   reportFeed,
+  addReview,
+  updateRSVPVerificationStatus,
 } from "../controllers/feed.controller.js";
 
 const router = Router();
@@ -23,7 +25,9 @@ router.post("/create", createFeeds);
 router.post("/comment/:feedId", addComment);
 router.post("/vote/:feedId", voteOnPoll);
 router.post("/rsvp/:feedId", addOrUpdateRSVP);
+router.patch("/rsvp/:feedId/verify/:userId", updateRSVPVerificationStatus);
 router.post("/report/:feedId", reportFeed);
+router.post("/review/:feedId", addReview);
 router.delete("/rsvp/:feedId", removeRSVP);
 router.patch("/:feedId/like", toggleLike);
 router.patch("/update/:feedId", updateFeed);

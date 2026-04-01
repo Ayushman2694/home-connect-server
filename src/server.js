@@ -12,6 +12,7 @@ import wholesaleDealRoutes from "./routes/wholesale-deal.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 import mediaRoutes from "./routes/media.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 import { startNotificationWatcher } from "./watchers/notification.watcher.js";
 
 dotenv.config();
@@ -32,6 +33,7 @@ app.use("/api/wholesale-deal", wholesaleDealRoutes);
 app.use("/api/notification", notificationRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/media", mediaRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.listen(process.env.PORT || 3000, () => {
   connectDB();

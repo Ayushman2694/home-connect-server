@@ -2,6 +2,7 @@ import Feed from "../models/feed.model.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
+import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 // Create a new feed (post, poll, event)
 export const createFeeds = async (req, res) => {
@@ -213,7 +214,7 @@ export const voteOnPoll = async (req, res) => {
 
     // Check if user already voted - do not allow multiple votes
     const existingVoteIndex = feed.votes.findIndex(
-      (vote) => vote.userId.toString() === userId
+      (vote) => vote.userId.toString() === userId,
     );
 
     if (existingVoteIndex !== -1) {
@@ -234,7 +235,7 @@ export const voteOnPoll = async (req, res) => {
     const totalVotes = feed.votes.length;
     const results = feed.options.map((option) => {
       const voteCount = feed.votes.filter(
-        (vote) => vote.optionId === option.id
+        (vote) => vote.optionId === option.id,
       ).length;
       const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
 
@@ -288,6 +289,7 @@ export const addOrUpdateRSVP = async (req, res) => {
       participants = 1,
       profilePhotoUrl,
       fullName,
+      verificationStatus,
     } = req.body;
 
     console.log("RSVP Request Body:", req.body);
@@ -321,7 +323,7 @@ export const addOrUpdateRSVP = async (req, res) => {
     // Check if user already has an RSVP and get index
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingRSVPIndex = feed.rsvps.findIndex(
-      (rsvp) => rsvp.user.toString() === userObjectIdStr
+      (rsvp) => rsvp.user.toString() === userObjectIdStr,
     );
     const isUpdate = existingRSVPIndex !== -1;
 
@@ -333,28 +335,37 @@ export const addOrUpdateRSVP = async (req, res) => {
       feed.rsvps.map((r) => ({
         userId: r.user.toString(),
         fullName: r.fullName,
-      }))
+      })),
     );
 
     if (isUpdate) {
+      const updateFields = {
+        "rsvps.$[elem].price": price,
+        "rsvps.$[elem].participants": participants,
+        "rsvps.$[elem].profilePhotoUrl": profilePhotoUrl,
+        "rsvps.$[elem].fullName": fullName,
+      };
+
+      if (verificationStatus?.status !== undefined) {
+        updateFields["rsvps.$[elem].verificationStatus.status"] =
+          verificationStatus.status;
+      }
+      if (verificationStatus?.rejectionReason !== undefined) {
+        updateFields["rsvps.$[elem].verificationStatus.rejectionReason"] =
+          verificationStatus.rejectionReason;
+      }
+
       // Use atomic update for existing RSVP
       feed = await Feed.findByIdAndUpdate(
         feedId,
-        {
-          $set: {
-            "rsvps.$[elem].price": price,
-            "rsvps.$[elem].participants": participants,
-            "rsvps.$[elem].profilePhotoUrl": profilePhotoUrl,
-            "rsvps.$[elem].fullName": fullName,
-          },
-        },
+        { $set: updateFields },
         {
           arrayFilters: [{ "elem.user": new mongoose.Types.ObjectId(userId) }],
           new: true,
-        }
+        },
       );
     } else {
-      // Push new RSVP
+      // Push new RSVP with verification status defaulting to pending
       feed = await Feed.findByIdAndUpdate(
         feedId,
         {
@@ -365,24 +376,28 @@ export const addOrUpdateRSVP = async (req, res) => {
               participants,
               profilePhotoUrl,
               fullName,
+              verificationStatus: {
+                status: VERIFICATION_STATUS.PENDING,
+                rejectionReason: null,
+              },
             },
           },
         },
-        { new: true }
+        { new: true },
       );
     }
 
     // Calculate total participants and update registeredParticipants
     const totalParticipants = feed.rsvps.reduce(
       (sum, rsvp) => sum + rsvp.participants,
-      0
+      0,
     );
 
     // Update registeredParticipants
     feed = await Feed.findByIdAndUpdate(
       feedId,
       { registeredParticipants: totalParticipants },
-      { new: true }
+      { new: true },
     ); // Update User orders
     try {
       const feedObjectId = new mongoose.Types.ObjectId(feedId);
@@ -403,7 +418,7 @@ export const addOrUpdateRSVP = async (req, res) => {
       const existingOrderIndex = user.orders.findIndex(
         (order) =>
           order.sourceId &&
-          order.sourceId.toString() === feedObjectId.toString()
+          order.sourceId.toString() === feedObjectId.toString(),
       );
 
       if (existingOrderIndex !== -1) {
@@ -498,7 +513,7 @@ export const removeRSVP = async (req, res) => {
     // Check if user has an RSVP
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingRSVPIndex = feed.rsvps.findIndex(
-      (rsvp) => rsvp.user.toString() === userObjectIdStr
+      (rsvp) => rsvp.user.toString() === userObjectIdStr,
     );
 
     if (existingRSVPIndex === -1) {
@@ -517,20 +532,20 @@ export const removeRSVP = async (req, res) => {
           rsvps: { user: new mongoose.Types.ObjectId(userId) },
         },
       },
-      { new: true }
+      { new: true },
     );
 
     // Calculate total participants after removal
     const totalParticipants = feed.rsvps.reduce(
       (sum, rsvp) => sum + rsvp.participants,
-      0
+      0,
     );
 
     // Update registeredParticipants
     feed = await Feed.findByIdAndUpdate(
       feedId,
       { registeredParticipants: totalParticipants },
-      { new: true }
+      { new: true },
     );
 
     // Remove order from User's orders array
@@ -548,7 +563,7 @@ export const removeRSVP = async (req, res) => {
             },
           },
         },
-        { new: true }
+        { new: true },
       );
     } catch (userError) {
       console.error("Error removing order from user:", userError);
@@ -560,6 +575,175 @@ export const removeRSVP = async (req, res) => {
       message: "RSVP removed successfully",
       rsvps: feed.rsvps,
       registeredParticipants: totalParticipants,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
+// Update RSVP verification status (approve/reject)
+export const updateRSVPVerificationStatus = async (req, res) => {
+  try {
+    const { feedId, userId } = req.params;
+    const { status, rejectionReason } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "status is required",
+        code: res.statusCode,
+      });
+    }
+
+    if (!Object.values(VERIFICATION_STATUS).includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `status must be one of: ${Object.values(VERIFICATION_STATUS).join(", ")}`,
+        code: res.statusCode,
+      });
+    }
+
+    if (status === VERIFICATION_STATUS.REJECTED && !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        message: "rejectionReason is required when status is rejected",
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findById(feedId);
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    if (feed.type !== "event") {
+      return res.status(400).json({
+        success: false,
+        message: "This feed is not an event",
+        code: res.statusCode,
+      });
+    }
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const rsvpExists = feed.rsvps.some(
+      (rsvp) => rsvp.user.toString() === userObjectId.toString(),
+    );
+
+    if (!rsvpExists) {
+      return res.status(404).json({
+        success: false,
+        message: "RSVP not found for this user",
+        code: res.statusCode,
+      });
+    }
+
+    const updateFields = {
+      "rsvps.$[elem].verificationStatus.status": status,
+      "rsvps.$[elem].verificationStatus.rejectionReason":
+        status === VERIFICATION_STATUS.REJECTED ? rejectionReason : null,
+    };
+
+    const updatedFeed = await Feed.findByIdAndUpdate(
+      feedId,
+      { $set: updateFields },
+      {
+        arrayFilters: [{ "elem.user": userObjectId }],
+        new: true,
+      },
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `RSVP ${status} successfully`,
+      rsvps: updatedFeed.rsvps,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
+// Add a review to an event feed
+export const addReview = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    const { userId, userName, rating, comment, profilePhotoUrl } = req.body;
+
+    if (!userId || !rating) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and rating are required",
+        code: res.statusCode,
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(feedId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid feedId",
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findById(feedId);
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    if (feed.type !== "event") {
+      return res.status(400).json({
+        success: false,
+        message: "Reviews are only allowed for event type feeds",
+        code: res.statusCode,
+      });
+    }
+
+    // One review per user
+    const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
+    const alreadyReviewed = (feed.reviews || []).some(
+      (review) => review.userId.toString() === userObjectIdStr,
+    );
+
+    if (alreadyReviewed) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already reviewed this event",
+        code: res.statusCode,
+      });
+    }
+
+    feed.reviews = feed.reviews || [];
+    feed.reviews.push({
+      userId: new mongoose.Types.ObjectId(userId),
+      userName,
+      rating,
+      comment,
+      profilePhotoUrl,
+    });
+
+    await feed.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Review added successfully",
+      reviews: feed.reviews,
       code: res.statusCode,
     });
   } catch (error) {
@@ -607,7 +791,7 @@ export const reportFeed = async (req, res) => {
     // Check if user has already reported this feed
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingReport = feed.report.find(
-      (report) => report.userId.toString() === userObjectIdStr
+      (report) => report.userId.toString() === userObjectIdStr,
     );
 
     if (existingReport) {

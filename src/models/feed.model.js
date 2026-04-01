@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 const FeedSchema = new mongoose.Schema(
   {
@@ -37,6 +38,31 @@ const FeedSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
+    reviews: {
+      type: [
+        {
+          _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
+          userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+          },
+          userName: { type: String, trim: true },
+          rating: { type: Number, min: 1, max: 5, required: true },
+          comment: { type: String, trim: true },
+          profilePhotoUrl: { type: String, trim: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: null,
+      validate: {
+        validator: function (arr) {
+          if (!arr || arr.length === 0) return true;
+          return this.type === "event";
+        },
+        message: "Reviews are only allowed for event type feeds.",
+      },
+    }, // For event
     totalReportCount: { type: Number, default: 0 },
     flatNo: { type: String, trim: true },
     towerName: { type: String, trim: true },
@@ -101,6 +127,14 @@ const FeedSchema = new mongoose.Schema(
         },
         price: { type: Number, default: 0 },
         participants: { type: Number, default: 1 },
+        verificationStatus: {
+          status: {
+            type: String,
+            enum: Object.values(VERIFICATION_STATUS),
+            default: VERIFICATION_STATUS.PENDING,
+          },
+          rejectionReason: { type: String, default: null },
+        },
         profilePhotoUrl: { type: String, trim: true },
         fullName: { type: String, trim: true },
         _id: false,
@@ -123,7 +157,7 @@ const FeedSchema = new mongoose.Schema(
     // Likes: array of user references
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.model("Feed", FeedSchema);
