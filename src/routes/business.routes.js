@@ -11,6 +11,7 @@ import {
   updateCatalogueItem,
   addOrUpdateBusinessReview,
   reportBusiness,
+  rejectBusiness,
 } from "../controllers/business.controller.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 
@@ -40,5 +41,7 @@ router.put(
 router.post("/:businessId/review", authenticate, addOrUpdateBusinessReview);
 // Report a business
 router.post("/report/:businessId", authenticate, reportBusiness);
+// Reject a business (admin action)
+router.patch("/:businessId/reject", authenticate, rejectBusiness);
 
 export default router;

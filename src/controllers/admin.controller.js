@@ -3,7 +3,7 @@ import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import DailyService from "../models/daily-service.model.js";
-import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { VERIFICATION_STATUS, USER_ROLES } from "../utils/constants.js";
 
 // Fetch all reported content across all entity types
 export const getAllReportedContent = async (req, res) => {
@@ -263,6 +263,8 @@ export const getAllApprovedContent = async (req, res) => {
       User.find({
         societyId,
         "isAddressVerified.status": approvedStatus,
+        _id: { $ne: "693ad81605d5a6aaf90f7cc9" },
+        roles: USER_ROLES.RESIDENT,
       })
         .select(
           "fullName phone roles profilePhotoUrl completeAddress tower flatNo isAddressVerified createdAt",
@@ -276,7 +278,7 @@ export const getAllApprovedContent = async (req, res) => {
         .select(
           "title category phone email profilePhotoUrl userId societyId verificationStatus createdAt",
         )
-        .populate("userId", "fullName phone")
+        .populate("userId", "fullName phone roles")
         .lean(),
 
       DailyService.find({
@@ -293,8 +295,9 @@ export const getAllApprovedContent = async (req, res) => {
 
     const approvedResidents =
       residentsResult.status === "fulfilled" ? residentsResult.value : [];
-    const approvedBusinesses =
-      businessesResult.status === "fulfilled" ? businessesResult.value : [];
+    const approvedBusinesses = (
+      businessesResult.status === "fulfilled" ? businessesResult.value : []
+    ).filter((b) => b.userId?.roles?.includes(USER_ROLES.BUSINESS));
     const approvedDailyServices =
       servicesResult.status === "fulfilled" ? servicesResult.value : [];
 

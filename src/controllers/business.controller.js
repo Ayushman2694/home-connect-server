@@ -304,8 +304,15 @@ export const getBusinessesByUserId = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { productId } = req.params;
-    const product = await Product.findById(productId);
-    if (!product) {
+
+    const business = await Business.findOne({ _id: productId })
+      .populate(
+        "userId",
+        "fullName phone profilePhotoUrl flatNumber tower roles societyId",
+      )
+      .lean();
+
+    if (!business) {
       return res.status(404).json({
         success: false,
         code: res.statusCode,
@@ -315,7 +322,7 @@ export const getProductById = async (req, res) => {
     res.status(200).json({
       success: true,
       code: res.statusCode,
-      product,
+      business,
     });
   } catch (error) {
     console.error("Error in getProductById:", error);
@@ -479,6 +486,100 @@ export const addOrUpdateBusinessReview = async (req, res) => {
       success: false,
       code: res.statusCode,
       error: "Failed to add review",
+    });
+  }
+};
+
+/**
+ * Reject a business – updates verificationStatus in Business collection
+ * and businessStatus in User collection.
+ * @route PATCH /api/business/:businessId/reject
+ * Body: { userId, rejectionReason }
+ */
+export const rejectBusiness = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const { userId, rejectionReason } = req.body;
+
+    if (!userId || !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        error: "userId and rejectionReason are required",
+      });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(businessId) ||
+      !mongoose.Types.ObjectId.isValid(userId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        error: "Invalid businessId or userId",
+      });
+    }
+
+    // Update verificationStatus in Business collection
+    const updatedBusiness = await Business.findOneAndUpdate(
+      { _id: businessId, userId },
+      {
+        $set: {
+          "verificationStatus.status": VERIFICATION_STATUS.REJECTED,
+          "verificationStatus.rejectionReason": rejectionReason,
+        },
+      },
+      { new: true, lean: true },
+    );
+
+    if (!updatedBusiness) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        error: "Business not found or does not belong to the specified user",
+      });
+    }
+
+    // Update isAddressVerified in User collection
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          "isAddressVerified.status": VERIFICATION_STATUS.REJECTED,
+          "isAddressVerified.rejectionReason": rejectionReason,
+        },
+      },
+      { runValidators: true },
+    );
+
+    // Also sync the verificationStatus inside user's businessIds array entry
+    await User.findOneAndUpdate(
+      {
+        _id: userId,
+        "businessIds.id": new mongoose.Types.ObjectId(businessId),
+      },
+      {
+        $set: {
+          "businessIds.$.verificationStatus": VERIFICATION_STATUS.REJECTED,
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      code: 200,
+      message: "Business rejected successfully",
+      business: {
+        _id: updatedBusiness._id,
+        verificationStatus: updatedBusiness.verificationStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Error in rejectBusiness:", error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      error: "Error rejecting business",
     });
   }
 };
