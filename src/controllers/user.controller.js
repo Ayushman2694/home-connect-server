@@ -3,6 +3,7 @@ import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
+import { Notification } from "../models/notification.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 
 export const createUser = async (req, res) => {
@@ -47,6 +48,16 @@ export const createUser = async (req, res) => {
     });
 
     await newUser.save();
+
+    // Notify Admin of new user registration
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `New user registration: ${fullName} (${phone})`,
+      });
+    } catch (err) {
+      console.error("Failed to create admin notification for new user:", err);
+    }
 
     return res.status(201).json({
       message: "User created successfully",
@@ -498,6 +509,17 @@ export const reportUser = async (req, res) => {
     reportedUser.totalReportCount += 1;
 
     await reportedUser.save();
+
+    // Notify Admin of user report
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `User Reported: ${reportedUser.fullName} has been reported for: ${reason}`,
+      });
+    } catch (err) {
+      console.error("Failed to create admin notification for reported user:", err);
+    }
+
 
     res.status(200).json({
       success: true,

@@ -99,6 +99,16 @@ export const createBusiness = async (req, res) => {
       }
     }
 
+    // Notify Admin of new business registration
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `New business created: ${title} by user ${populatedBusiness.userId?.fullName || userId}`,
+      });
+    } catch (err) {
+      console.error("Failed to create admin notification for new business:", err);
+    }
+
     res.status(201).json({
       success: true,
       code: res.statusCode,
@@ -648,6 +658,17 @@ export const reportBusiness = async (req, res) => {
     business.totalReportCount += 1;
 
     await business.save();
+
+    // Notify Admin of business report
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `Business Reported: ${business.title} has been reported for: ${reason}`,
+      });
+    } catch (err) {
+      console.error("Failed to create admin notification for reported business:", err);
+    }
+
 
     res.status(200).json({
       success: true,
