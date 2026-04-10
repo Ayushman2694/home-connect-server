@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
+import { Notification } from "../models/notification.model.js";
+
 
 // Unified user orders across WholesaleDeal.orders[] and Business.orders[]
 // Query shape is normalized for the client
@@ -287,6 +289,18 @@ export const upsertWholesaleOrder = async (req, res) => {
       amount: computedTotalAmount,
       currentOrderedQty: totalQty,
     });
+
+    // Notify Dealer/Admin of new wholesale order
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `New wholesale order for ${dealDocForPrice.title}: Qty ${totalQtyForUser}, Amount ${computedTotalAmount}`,
+      });
+    } catch (err) {
+      console.error("Failed to create notification for wholesale order:", err);
+    }
+
+
   } catch (error) {
     console.error("Error upserting wholesale order:", error);
     return res
@@ -547,6 +561,22 @@ export const upsertBusinessOrder = async (req, res) => {
       message: "Order upserted",
       orderId: orderDocId,
     });
+
+    // Notify Business Owner of new business order
+    try {
+      const biz = await Business.findById(businessId).select("userId title");
+      if (biz && biz.userId) {
+        await Notification.create({
+          type: "NEW_ORDER",
+          userId: biz.userId.toString(),
+          message: `New order for ${biz.title}: Qty ${quantity}, Amount ${amount}`,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to create notification for business order:", err);
+    }
+
+
   } catch (error) {
     console.error("Error upserting business order:", error);
     return res

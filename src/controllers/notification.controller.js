@@ -1,5 +1,6 @@
 import { AdminToken } from "../models/adminToken.model.js";
 import { Notification } from "../models/notification.model.js";
+import { UserToken } from "../models/userToken.model.js";
 import admin from "../config/firebase.js"; // Firebase Admin SDK
 
 export const registerAdminToken = async (req, res) => {
@@ -21,7 +22,28 @@ export const registerAdminToken = async (req, res) => {
   }
 };
 
+export const registerUserToken = async (req, res) => {
+  try {
+    const { token, userId } = req.body;
+    if (!token || !userId)
+      return res.status(400).json({ error: "Token and userId are required" });
+
+    // Save token only if it doesn't exist for this user
+    const existing = await UserToken.findOne({ token, userId });
+    if (!existing) {
+      await UserToken.create({ token, userId });
+      console.log("✅ User token registered:", token, "for user:", userId);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error registering user token:", err);
+    res.status(500).json({ error: "Failed to register user token" });
+  }
+};
+
 export const createReminder = async (req, res) => {
+
   try {
     const { userId, reminderId, messageText } = req.body;
     if (!userId || !reminderId || !messageText)
