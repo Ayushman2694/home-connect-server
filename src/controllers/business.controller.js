@@ -491,21 +491,38 @@ export const addOrUpdateBusinessReview = async (req, res) => {
 };
 
 /**
- * Reject a business – updates verificationStatus in Business collection
- * and businessStatus in User collection.
- * @route PATCH /api/business/:businessId/reject
- * Body: { userId, rejectionReason }
+ * Generic admin action – approve or reject a business.
+ * Updates verificationStatus in Business, isAddressVerified in User,
+ * and upserts the businessId entry in User.businessIds.
+ * @route PATCH /api/business/:businessId/status
+ * Body: { userId, status, rejectionReason? }
  */
-export const rejectBusiness = async (req, res) => {
+export const updateBusinessVerificationStatus = async (req, res) => {
   try {
     const { businessId } = req.params;
-    const { userId, rejectionReason } = req.body;
+    const { userId, status, rejectionReason } = req.body;
 
-    if (!userId || !rejectionReason) {
+    if (!userId || !status) {
       return res.status(400).json({
         success: false,
         code: 400,
-        error: "userId and rejectionReason are required",
+        error: "userId and status are required",
+      });
+    }
+
+    if (!Object.values(VERIFICATION_STATUS).includes(status)) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        error: `status must be one of: ${Object.values(VERIFICATION_STATUS).join(", ")}`,
+      });
+    }
+
+    if (status === VERIFICATION_STATUS.REJECTED && !rejectionReason) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        error: "rejectionReason is required when rejecting a business",
       });
     }
 
@@ -520,13 +537,14 @@ export const rejectBusiness = async (req, res) => {
       });
     }
 
-    // Update verificationStatus in Business collection
+    // 1. Update verificationStatus in Business collection
     const updatedBusiness = await Business.findOneAndUpdate(
       { _id: businessId, userId },
       {
         $set: {
-          "verificationStatus.status": VERIFICATION_STATUS.REJECTED,
-          "verificationStatus.rejectionReason": rejectionReason,
+          "verificationStatus.status": status,
+          "verificationStatus.rejectionReason":
+            status === VERIFICATION_STATUS.REJECTED ? rejectionReason : null,
         },
       },
       { new: true, lean: true },
@@ -540,46 +558,55 @@ export const rejectBusiness = async (req, res) => {
       });
     }
 
-    // Update isAddressVerified in User collection
+    // 2. Update isAddressVerified in User collection
     await User.findByIdAndUpdate(
       userId,
       {
         $set: {
-          "isAddressVerified.status": VERIFICATION_STATUS.REJECTED,
-          "isAddressVerified.rejectionReason": rejectionReason,
+          "isAddressVerified.status": status,
+          "isAddressVerified.rejectionReason":
+            status === VERIFICATION_STATUS.REJECTED ? rejectionReason : null,
         },
       },
       { runValidators: true },
     );
 
-    // Also sync the verificationStatus inside user's businessIds array entry
-    await User.findOneAndUpdate(
-      {
-        _id: userId,
-        "businessIds.id": new mongoose.Types.ObjectId(businessId),
-      },
-      {
-        $set: {
-          "businessIds.$.verificationStatus": VERIFICATION_STATUS.REJECTED,
-        },
-      },
+    // 3. Upsert businessId entry in User.businessIds
+    //    Try updating the existing array element first; if none matched, push a new entry.
+    const businessObjectId = new mongoose.Types.ObjectId(businessId);
+
+    const updateResult = await User.updateOne(
+      { _id: userId, "businessIds.id": businessObjectId },
+      { $set: { "businessIds.$.verificationStatus": status } },
     );
+
+    if (
+      updateResult.matchedCount === 0 &&
+      status === VERIFICATION_STATUS.APPROVED
+    ) {
+      // businessId not yet in the array — add it only when approved
+      await User.findByIdAndUpdate(userId, {
+        $push: {
+          businessIds: { id: businessObjectId, verificationStatus: status },
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
       code: 200,
-      message: "Business rejected successfully",
+      message: `Business ${status} successfully`,
       business: {
         _id: updatedBusiness._id,
         verificationStatus: updatedBusiness.verificationStatus,
       },
     });
   } catch (error) {
-    console.error("Error in rejectBusiness:", error);
+    console.error("Error in updateBusinessVerificationStatus:", error);
     res.status(500).json({
       success: false,
       code: 500,
-      error: "Error rejecting business",
+      error: "Error updating business verification status",
     });
   }
 };
