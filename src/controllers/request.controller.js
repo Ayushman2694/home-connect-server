@@ -1,5 +1,6 @@
 import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
+import { Notification } from "../models/notification.model.js";
 
 export const getAllRequests = async (req, res) => {
   try {
@@ -48,6 +49,18 @@ export const updateRequestStatus = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Request not found" });
     }
+
+    // Notify User of request status update
+    try {
+      await Notification.create({
+        type: "REQUEST_UPDATE",
+        userId: updatedRequest.user.toString(),
+        message: `Your request status has been updated to: ${status}`,
+      });
+    } catch (err) {
+      console.error("Failed to create user notification for request update:", err);
+    }
+
     res.json({ success: true, request: updatedRequest });
   } catch (error) {
     console.error(error);

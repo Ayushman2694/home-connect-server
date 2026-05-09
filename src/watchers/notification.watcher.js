@@ -14,35 +14,48 @@ export const startNotificationWatcher = async () => {
         console.log("📢 New notification detected:", doc.message);
 
         try {
-          // Fetch all admin device tokens from DB
-          const tokens = await AdminToken.find().select("token -_id");
-          const deviceTokens = tokens.map((t) => t.token);
+          let deviceTokens = [];
+          let targetTitle = "New Notification";
+
+          if (doc.type === "ADMIN_ALERT" || !doc.userId) {
+            // Fetch all admin device tokens from DB
+            const tokens = await AdminToken.find().select("token -_id");
+            deviceTokens = tokens.map((t) => t.token);
+            targetTitle = "System Alert";
+          } else {
+            // Targeted notification for a specific user
+            const { UserToken } = await import("../models/userToken.model.js");
+            const tokens = await UserToken.find({ userId: doc.userId }).select("token -_id");
+            deviceTokens = tokens.map((t) => t.token);
+            targetTitle = doc.type === "REMINDER" ? "New Reminder" : "Notification";
+          }
 
           if (deviceTokens.length === 0) {
-            console.log("⚠️ No admin tokens registered, skipping push");
+            console.log("⚠️ No tokens registered for target, skipping push");
             return;
           }
 
           // Construct FCM message
           const message = {
             notification: {
-              title: "New Reminder",
+              title: targetTitle,
               body: doc.message,
             },
             data: {
               type: doc.type,
-              userId: String(doc.userId),
+              userId: String(doc.userId || ""),
               notificationId: String(doc._id),
             },
             tokens: deviceTokens,
           };
 
-          // Send push notification to all admin devices
+          // Send push notification
           const response = await admin.messaging().sendEachForMulticast(message);
 
           console.log(
-            `✅ Push notification sent to ${response.successCount} admins, failed for ${response.failureCount}`
+            `✅ Push notification sent to ${response.successCount} targets, failed for ${response.failureCount}`
           );
+
 
           // Optional: log failed tokens
           if (response.failureCount > 0) {

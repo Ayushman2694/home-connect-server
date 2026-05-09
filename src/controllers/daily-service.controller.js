@@ -1,4 +1,5 @@
 import DailyService from "../models/daily-service.model.js";
+import { Notification } from "../models/notification.model.js";
 import { VERIFICATION_STATUS } from "../utils/constants.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
@@ -441,6 +442,17 @@ export const reportDailyService = async (req, res) => {
     helper.totalReportCount += 1;
 
     await helper.save();
+
+    // Notify Admin of daily service report
+    try {
+      await Notification.create({
+        type: "ADMIN_ALERT",
+        message: `Daily Service Helper Reported: ${helper.name} has been reported for: ${reason}`,
+      });
+    } catch (err) {
+      console.error("Failed to create admin notification for reported helper:", err);
+    }
+
 
     res.status(200).json({
       success: true,
