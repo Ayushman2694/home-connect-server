@@ -19,3 +19,8 @@ export const DEAL_STATUS = {
   EXPIRED: "expired",
   PENDING: "pending",
 };
+
+export const ResidentTypeEnum = {
+  TENANT: "Tenant",
+  OWNER: "Owner",
+};

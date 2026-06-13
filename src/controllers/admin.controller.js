@@ -149,7 +149,7 @@ export const getAllPendingContent = async (req, res) => {
         "isAddressVerified.status": pendingStatus,
       })
         .select(
-          "fullName phone roles profilePhotoUrl completeAddress tower flatNo isAddressVerified createdAt",
+          "fullName phone roles profilePhotoUrl completeAddress tower flatNo isAddressVerified createdAt residentType residentProofUrls",
         )
         .lean(),
 

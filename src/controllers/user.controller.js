@@ -17,6 +17,8 @@ export const createUser = async (req, res) => {
       flatNo,
       tower,
       email,
+      residentType,
+      residentProofUrls,
       isAddressVerified,
     } = req.body;
 
@@ -27,6 +29,10 @@ export const createUser = async (req, res) => {
         message: "User already exists",
         userId: existingUser._id,
       });
+    }
+
+    if (!residentType) {
+      return res.status(400).json({ message: "Resident type is required" });
     }
 
     // Sanitize email: convert empty or whitespace-only strings to undefined
@@ -43,6 +49,8 @@ export const createUser = async (req, res) => {
       societyId,
       flatNo,
       tower,
+      residentType,
+      residentProofUrls,
       isAddressVerified,
       ...(sanitizedEmail ? { email: sanitizedEmail } : {}),
     });
@@ -517,9 +525,11 @@ export const reportUser = async (req, res) => {
         message: `User Reported: ${reportedUser.fullName} has been reported for: ${reason}`,
       });
     } catch (err) {
-      console.error("Failed to create admin notification for reported user:", err);
+      console.error(
+        "Failed to create admin notification for reported user:",
+        err,
+      );
     }
-
 
     res.status(200).json({
       success: true,

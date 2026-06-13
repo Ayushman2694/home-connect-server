@@ -7,28 +7,22 @@ import cloudinary from "../utils/cloudinaryConfig.js";
  */
 export const signUpload = async (req, res) => {
   try {
-    console.log("Media sign request received:", req.body);
-
-    const { folder } = req.body;
+    const { folder, resource_type } = req.body;
     const timestamp = Math.round(new Date().getTime() / 1000);
 
-    // Parameters for the upload (these will be included in the signature)
+    // Must include ALL params you'll send from frontend
     const uploadParams = {
-      timestamp: timestamp,
-      ...(folder && { folder }), // Optional folder organization
+      timestamp,
+      ...(folder && { folder }),
     };
+    // Note: quality/fetch_format via eager or upload options need to be signed too
+    // Simplest fix: don't send them from frontend at all (see FE fix below)
 
-    console.log("Upload params:", uploadParams);
-
-    // Generate signature using Cloudinary's built-in method (more reliable)
     const signature = cloudinary.utils.api_sign_request(
       uploadParams,
-      process.env.CLOUDINARY_API_SECRET
+      process.env.CLOUDINARY_API_SECRET,
     );
 
-    console.log("Generated signature:", signature);
-
-    // Return the parameters needed for upload
     res.status(200).json({
       success: true,
       code: res.statusCode,
@@ -42,13 +36,9 @@ export const signUpload = async (req, res) => {
     });
   } catch (error) {
     console.error("Error generating Cloudinary signature:", error);
-    res.status(500).json({
-      success: false,
-      code: res.statusCode,
-      error: "Failed to generate upload signature",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to generate upload signature" });
   }
 };
 
@@ -58,43 +48,29 @@ export const signUpload = async (req, res) => {
  */
 export const deleteImage = async (req, res) => {
   try {
-    const { public_id } = req.body;
+    const { public_id, resource_type = "image" } = req.body; // ← add resource_type
 
     if (!public_id) {
-      return res.status(400).json({
-        success: false,
-        code: res.statusCode,
-        error: "public_id is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, error: "public_id is required" });
     }
 
-    const result = await cloudinary.uploader.destroy(public_id);
+    const result = await cloudinary.uploader.destroy(public_id, {
+      resource_type, // ← "raw" for PDFs, "image" for images
+    });
 
-    console.log("Delete result:", result);
     if (result.result === "ok") {
-      res.status(200).json({
-        success: true,
-        code: res.statusCode,
-        message: "Image deleted successfully",
-        result,
-      });
+      res
+        .status(200)
+        .json({ success: true, message: "File deleted successfully" });
     } else {
-      res.status(400).json({
-        success: false,
-        code: res.statusCode,
-        error: "Failed to delete image",
-        result,
-      });
+      res
+        .status(400)
+        .json({ success: false, error: "Failed to delete file", result });
     }
   } catch (error) {
-    console.error("Error deleting image:", error);
-    res.status(500).json({
-      success: false,
-      code: res.statusCode,
-      error: "Failed to delete image",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
+    res.status(500).json({ success: false, error: "Failed to delete file" });
   }
 };
 

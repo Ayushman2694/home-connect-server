@@ -33,7 +33,7 @@ const BusinessOrderSchema = new mongoose.Schema(
       phone: String,
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // Catalogue schema for business
@@ -57,7 +57,7 @@ const BusinessCatalogueSchema = new mongoose.Schema(
     },
     // Add more fields as needed
   },
-  { timestamps: true, _id: true }
+  { timestamps: true, _id: true },
 );
 
 const BusinessInfoSchema = new mongoose.Schema(
@@ -73,6 +73,18 @@ const BusinessInfoSchema = new mongoose.Schema(
           return /^\+?[1-9]\d{1,14}$/.test(v);
         },
         message: (props) => `${props.value} is not a valid phone number!`,
+      },
+    },
+    alternatePhone: {
+      type: String,
+      required: false,
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return /^\+?[1-9]\d{1,14}$/.test(v);
+        },
+        message: (props) =>
+          `${props.value} is not a valid alternate phone number!`,
       },
     },
     email: {
@@ -131,7 +143,7 @@ const BusinessInfoSchema = new mongoose.Schema(
           return (
             !v ||
             /^(http:\/\/www\.|https:\/\/www\.|http:\/\/|https:\/\/)?[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?$/.test(
-              v
+              v,
             )
           );
         },
@@ -193,7 +205,7 @@ const BusinessInfoSchema = new mongoose.Schema(
       name: { type: String, trim: true },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Add an index on userId for fast queries by user

@@ -7,25 +7,21 @@ export const getSocietyById = async (req, res) => {
     const { societyId } = req.params;
 
     if (!societyId) {
-      return res
-        .status(400)
-        .json({
-          message: "Society ID is required",
-          success: false,
-          code: res.statusCode,
-        });
+      return res.status(400).json({
+        message: "Society ID is required",
+        success: false,
+        code: res.statusCode,
+      });
     }
 
     const society = await Society.findById(societyId);
 
     if (!society) {
-      return res
-        .status(404)
-        .json({
-          message: "Society not found",
-          success: false,
-          code: res.statusCode,
-        });
+      return res.status(404).json({
+        message: "Society not found",
+        success: false,
+        code: res.statusCode,
+      });
     }
 
     res.status(200).json({ society, success: true, code: res.statusCode });
@@ -46,6 +42,57 @@ export const getAllSocieties = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error fetching societies", error: error.message });
+  }
+};
+
+export const getSocietiesByCityOrState = async (req, res) => {
+  try {
+    const { city, state } = req.query;
+
+    if (!city && !state) {
+      return res.status(400).json({
+        message: "At least one of 'city' or 'state' query param is required",
+        success: false,
+        code: 400,
+      });
+    }
+
+    // Build a case-insensitive OR query for whichever params were passed
+    const orConditions = [];
+
+    if (city) {
+      orConditions.push({
+        city: { $regex: `^${city.trim()}$`, $options: "i" },
+      });
+    }
+    if (state) {
+      orConditions.push({
+        state: { $regex: `^${state.trim()}$`, $options: "i" },
+      });
+    }
+
+    const societies = await Society.find({ $or: orConditions }).lean();
+
+    if (!societies.length) {
+      return res.status(404).json({
+        message: "No societies found for the given city/state",
+        success: false,
+        code: 404,
+      });
+    }
+
+    return res.status(200).json({
+      societies,
+      count: societies.length,
+      success: true,
+      code: 200,
+    });
+  } catch (err) {
+    console.error("Error in getSocietiesByCityOrState controller:", err);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: err.message,
+    });
   }
 };
 
