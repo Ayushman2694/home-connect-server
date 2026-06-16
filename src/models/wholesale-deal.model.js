@@ -26,6 +26,7 @@ const WholesaleDealSchema = new mongoose.Schema(
       trim: true,
       maxLength: [100, "Deal title cannot be more than 100 characters"],
     },
+    postedBy: { type: String, trim: true },
     phone: {
       type: String,
       required: [true, "Phone number is required"],
@@ -73,6 +74,14 @@ const WholesaleDealSchema = new mongoose.Schema(
       enum: Object.values(DEAL_STATUS),
       default: DEAL_STATUS.PENDING,
     },
+    cancellationReason: {
+      type: String,
+      default: null,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -116,7 +125,7 @@ const WholesaleDealSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Add indexes for optimized queries by userId and societyId

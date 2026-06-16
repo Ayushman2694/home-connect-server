@@ -104,6 +104,10 @@ const UserSchema = new mongoose.Schema(
       },
       rejectionReason: { type: String, default: null },
     },
+    pushTokens: {
+      type: [String],
+      default: [],
+    },
     tower: { type: String, trim: true },
     flatNo: { type: String, trim: true },
     societyId: {

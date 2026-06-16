@@ -22,7 +22,6 @@ export const createUser = async (req, res) => {
       isAddressVerified,
     } = req.body;
 
-    // Use static method from model
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
       return res.status(404).json({
@@ -35,7 +34,6 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: "Resident type is required" });
     }
 
-    // Sanitize email: convert empty or whitespace-only strings to undefined
     const sanitizedEmail =
       typeof email === "string" && email.trim()
         ? email.trim().toLowerCase()
@@ -57,19 +55,34 @@ export const createUser = async (req, res) => {
 
     await newUser.save();
 
-    // Notify Admin of new user registration
+    // ── Notify all admins of new resident registration ──
     try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
-        message: `New user registration: ${fullName} (${phone})`,
-      });
+      await notifyAdmins(
+        societyId,
+        "New Resident Registration 🏠",
+        `${fullName} has submitted a resident profile for approval.`,
+        { screen: "/(admin)/pending-approvals", type: "new_resident" },
+      );
     } catch (err) {
-      console.error("Failed to create admin notification for new user:", err);
+      console.error("Failed to notify admins:", err);
+    }
+
+    // ── Notify the new user that their request is submitted ──
+    try {
+      if (newUser.pushToken) {
+        await sendPushNotification({
+          token: newUser.pushToken,
+          title: "Registration Submitted ✅",
+          body: "Your resident profile has been submitted and is pending approval.",
+          data: { screen: "/(tabs)/home", type: "registration_submitted" },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to notify new user:", err);
     }
 
     return res.status(201).json({
       message: "User created successfully",
-      // userId: newUser._id,
       newUser: await newUser.populate({
         path: "societyId",
         select: "-towers -totalFlats",
@@ -85,10 +98,9 @@ export const createUser = async (req, res) => {
         errors: Object.values(error.errors).map((err) => err.message),
       });
     }
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
   }
 };
 
@@ -145,15 +157,12 @@ export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = { ...req.body };
-    // Sanitize email in updates: remove empty/whitespace-only email to avoid duplicate empty-string index errors
+    // Sanitize email
     if (Object.prototype.hasOwnProperty.call(updates, "email")) {
       if (typeof updates.email === "string") {
         const trimmed = updates.email.trim();
-        if (!trimmed) {
-          delete updates.email;
-        } else {
-          updates.email = trimmed.toLowerCase();
-        }
+        if (!trimmed) delete updates.email;
+        else updates.email = trimmed.toLowerCase();
       } else {
         delete updates.email;
       }
@@ -173,6 +182,11 @@ export const updateUser = async (req, res) => {
       }
     }
 
+    // Fetch old user to compare verification status
+    const oldUser = await User.findById(userId).select(
+      "isAddressVerified pushToken fullName",
+    );
+
     const user = await User.findByIdAndUpdate(userId, updates, {
       new: true,
       runValidators: true,
@@ -185,15 +199,45 @@ export const updateUser = async (req, res) => {
         code: res.statusCode,
       });
     }
+    // ── Notify user if approval status changed ──
+    try {
+      const oldStatus = oldUser?.isAddressVerified?.status;
+      const newStatus = updates?.isAddressVerified?.status;
+
+      if (newStatus && oldStatus !== newStatus) {
+        await sendPushNotificationToUser(
+          user,
+          newStatus === "approved"
+            ? "Profile Approved 🎉"
+            : "Profile Rejected ❌",
+          newStatus === "approved"
+            ? "Your resident profile has been approved! You now have full access."
+            : updates?.isAddressVerified?.rejectionReason
+              ? `Your profile was rejected: ${updates.isAddressVerified.rejectionReason}`
+              : "Your resident profile was rejected. Please contact support.",
+          {
+            screen:
+              newStatus === "approved"
+                ? "/(tabs)/home"
+                : "/(shared)/update-profile",
+            type: `approval_${newStatus}`,
+          },
+        );
+      }
+    } catch (err) {
+      console.error("Failed to send approval notification:", err);
+    }
 
     return res
       .status(200)
       .json({ user, status: "success", code: res.statusCode });
   } catch (err) {
     console.error("Update user error:", err);
-    return res
-      .status(400)
-      .json({ message: err.message, status: "failure", code: res.statusCode });
+    return res.status(400).json({
+      message: err.message,
+      status: "failure",
+      code: res.statusCode,
+    });
   }
 };
 
@@ -602,5 +646,27 @@ export const isUserBusinessAllowed = async (req, res) => {
       message: "Error checking business creation authorization",
       code: res.statusCode,
     });
+  }
+};
+
+export const savePushToken = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { pushToken } = req.body;
+
+    if (!pushToken) {
+      return res
+        .status(400)
+        .json({ success: false, message: "pushToken is required" });
+    }
+
+    // Add token only if not already stored — avoids duplicates
+    await User.findByIdAndUpdate(userId, {
+      $addToSet: { pushTokens: pushToken },
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

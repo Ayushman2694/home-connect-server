@@ -11,6 +11,7 @@ export const VERIFICATION_STATUS = {
   PENDING: "pending",
   APPROVED: "approved",
   REJECTED: "rejected",
+  SUSPENDED: "suspended",
 };
 
 export const DEAL_STATUS = {
@@ -18,6 +19,7 @@ export const DEAL_STATUS = {
   COMPLETED: "completed",
   EXPIRED: "expired",
   PENDING: "pending",
+  CANCELLED: "cancelled",
 };
 
 export const ResidentTypeEnum = {
