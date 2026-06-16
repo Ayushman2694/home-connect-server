@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
-import { USER_ROLES, VERIFICATION_STATUS } from "../utils/constants.js";
+import {
+  ResidentTypeEnum,
+  USER_ROLES,
+  VERIFICATION_STATUS,
+} from "../utils/constants.js";
 
 const UserSchema = new mongoose.Schema(
   {
@@ -32,6 +36,28 @@ const UserSchema = new mongoose.Schema(
         message: (props) => `${props.value} is not a valid email!`,
       },
     },
+    residentType: {
+      type: String,
+      enum: Object.values(ResidentTypeEnum),
+      default: null,
+    },
+    residentProofUrls: [
+      {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function (v) {
+            return (
+              !v ||
+              /^(http:\/\/www\.|https:\/\/www\.|http:\/\/|https:\/\/)?[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,5}(:[0-9]{1,5})?(\/.*)?$/i.test(
+                v,
+              )
+            );
+          },
+          message: (props) => `${props.value} is not a valid proof URL!`,
+        },
+      },
+    ],
     roles: {
       type: [String],
       enum: Object.values(USER_ROLES),
@@ -78,6 +104,10 @@ const UserSchema = new mongoose.Schema(
       },
       rejectionReason: { type: String, default: null },
     },
+    pushTokens: {
+      type: [String],
+      default: [],
+    },
     tower: { type: String, trim: true },
     flatNo: { type: String, trim: true },
     societyId: {
@@ -111,7 +141,14 @@ const UserSchema = new mongoose.Schema(
         amount: { type: Number, default: 0 },
         status: {
           type: String,
-          enum: ["pending", "confirmed", "cancelled", "delivered"],
+          enum: [
+            "pending",
+            "confirmed",
+            "cancelled",
+            "delivered",
+            "approved",
+            "rejected",
+          ],
           default: "pending",
         },
         updatedAt: { type: Date, default: Date.now },

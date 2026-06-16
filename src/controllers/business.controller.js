@@ -17,6 +17,7 @@ export const createBusiness = async (req, res) => {
       price,
       businessPhone,
       phone,
+      alternatePhone,
       userId,
       societyId,
       profilePhotoUrl,
@@ -49,6 +50,7 @@ export const createBusiness = async (req, res) => {
       price,
       businessPhone,
       phone,
+      alternatePhone,
       userId,
       societyId,
       profilePhotoUrl,
@@ -106,7 +108,10 @@ export const createBusiness = async (req, res) => {
         message: `New business created: ${title} by user ${populatedBusiness.userId?.fullName || userId}`,
       });
     } catch (err) {
-      console.error("Failed to create admin notification for new business:", err);
+      console.error(
+        "Failed to create admin notification for new business:",
+        err,
+      );
     }
 
     res.status(201).json({
@@ -693,9 +698,11 @@ export const reportBusiness = async (req, res) => {
         message: `Business Reported: ${business.title} has been reported for: ${reason}`,
       });
     } catch (err) {
-      console.error("Failed to create admin notification for reported business:", err);
+      console.error(
+        "Failed to create admin notification for reported business:",
+        err,
+      );
     }
-
 
     res.status(200).json({
       success: true,

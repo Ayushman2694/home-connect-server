@@ -1,13 +1,19 @@
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
-import { VERIFICATION_STATUS, DEAL_STATUS } from "../utils/constants.js";
+import {
+  VERIFICATION_STATUS,
+  DEAL_STATUS,
+  USER_ROLES,
+} from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
+import Business from "../models/business.model.js";
 
 export const createWholesaleDeal = async (req, res) => {
   try {
     const {
       title,
+      postedBy,
       phone,
       images,
       description,
@@ -32,6 +38,7 @@ export const createWholesaleDeal = async (req, res) => {
     // ✅ Create deal
     const deal = await WholesaleDeal.create({
       title,
+      postedBy,
       phone,
       images,
       description,
@@ -73,7 +80,7 @@ export const getAllDealsBySocietyId = async (req, res) => {
     const { societyId } = req.params;
     const deals = await WholesaleDeal.find({ societyId }).populate(
       "userId",
-      "fullName phone profilePhotoUrl"
+      "fullName phone profilePhotoUrl",
     );
     const pendingReq = await WholesaleDeal.countDocuments({ societyId });
     res.status(200).json({
@@ -173,7 +180,23 @@ export const updateDeal = async (req, res) => {
 export const removeDeal = async (req, res) => {
   try {
     const { dealId } = req.params;
-    const deal = await WholesaleDeal.findByIdAndDelete(dealId);
+    const { reason } = req.body;
+
+    const deal = await WholesaleDeal.findByIdAndUpdate(
+      dealId,
+      {
+        $set: {
+          isDealActive: false,
+          dealStatus: DEAL_STATUS.CANCELLED,
+          "verificationStatus.status": VERIFICATION_STATUS.SUSPENDED,
+          "verificationStatus.rejectionReason": reason ?? null,
+          cancelledAt: new Date(),
+          cancellationReason: reason ?? null,
+        },
+      },
+      { new: true },
+    );
+
     if (!deal) {
       return res.status(404).json({
         success: false,
@@ -181,19 +204,59 @@ export const removeDeal = async (req, res) => {
         error: "Deal not found",
       });
     }
-    // Remove dealId from the user's dealIds array
-    if (deal.userId) {
-      await User.findByIdAndUpdate(deal.userId, {
-        $pull: { dealIds: dealId },
-      });
+
+    // Notify all users who placed orders on this deal
+    if (deal.orders?.length > 0) {
+      try {
+        const orderedUserIds = [
+          ...new Set(
+            deal.orders.map((o) => o.userId?.toString()).filter(Boolean),
+          ),
+        ];
+
+        const users = await User.find(
+          {
+            _id: { $in: orderedUserIds },
+            pushTokens: { $exists: true, $ne: [] },
+          },
+          { pushTokens: 1 },
+        );
+
+        const messages = users.flatMap((u) =>
+          (u.pushTokens ?? []).filter(Boolean).map((token) => ({
+            to: token,
+            sound: "default",
+            title: `Deal Cancelled: ${deal.title}`,
+            body: reason
+              ? `Reason: ${reason}`
+              : "This deal has been cancelled by the organizer.",
+            data: { type: "deal_cancelled", dealId: deal._id.toString() },
+          })),
+        );
+
+        if (messages.length > 0) {
+          await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(messages),
+          });
+        }
+      } catch (notifyErr) {
+        console.error(
+          "Failed to notify users of deal cancellation:",
+          notifyErr,
+        );
+      }
     }
+
     res.json({
       success: true,
       code: res.statusCode,
-      message: "Deal deleted successfully and removed from user's dealIds.",
+      message: "Deal cancelled successfully.",
+      deal,
     });
   } catch (error) {
-    console.error("Error in deleteDeal:", error);
+    console.error("Error in removeDeal:", error);
     if (error.name === "CastError") {
       return res.status(400).json({
         success: false,
@@ -204,7 +267,7 @@ export const removeDeal = async (req, res) => {
     res.status(500).json({
       success: false,
       code: res.statusCode,
-      error: "Error deleting deal",
+      error: "Error cancelling deal",
     });
   }
 };
@@ -227,7 +290,7 @@ export const updateExpiredDeals = async (req, res) => {
           dealStatus: DEAL_STATUS.EXPIRED,
           verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
         },
-      }
+      },
     );
 
     res.status(200).json({
@@ -338,7 +401,7 @@ export const reportDeal = async (req, res) => {
     // Check if user has already reported this deal
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingReport = deal.report.find(
-      (report) => report.userId.toString() === userObjectIdStr
+      (report) => report.userId.toString() === userObjectIdStr,
     );
 
     if (existingReport) {
@@ -375,6 +438,81 @@ export const reportDeal = async (req, res) => {
       success: false,
       message: error.message,
       code: res.statusCode,
+    });
+  }
+};
+
+export const getDealPostingAccountsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        code: res.statusCode,
+        message: "Valid userId is required",
+      });
+    }
+
+    const user = await User.findById(userId)
+      .select("fullName phone profilePhotoUrl")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        code: res.statusCode,
+        message: "User not found",
+      });
+    }
+
+    const businesses = await Business.find({
+      userId: new mongoose.Types.ObjectId(userId),
+    })
+      .select(
+        "businessName name title phone logoUrl profilePhotoUrl verificationStatus",
+      )
+      .lean();
+
+    const residentAccount = {
+      id: user._id,
+      type: USER_ROLES.RESIDENT,
+      name: user.fullName || "Resident Account",
+      phone: user.phone,
+      profilePhotoUrl: user.profilePhotoUrl,
+    };
+
+    const businessAccounts = businesses.map((business) => ({
+      id: business._id,
+      type: USER_ROLES.BUSINESS,
+      name:
+        business.businessName ||
+        business.name ||
+        business.title ||
+        "Business Account",
+      phone: business.phone,
+      profilePhotoUrl: business.logoUrl || business.profilePhotoUrl,
+      verificationStatus: business.verificationStatus,
+    }));
+
+    console.log("Resident Account:", residentAccount);
+    console.log("Business Accounts:", businessAccounts);
+
+    return res.status(200).json({
+      success: true,
+      code: res.statusCode,
+      data: {
+        residentAccount,
+        businessAccounts,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching deal posting accounts:", error);
+
+    return res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      message: error.message,
     });
   }
 };
