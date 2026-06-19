@@ -24,6 +24,19 @@ export const getUserOrders = async (req, res) => {
       { $unwind: "$orders" },
       { $match: { "orders.userId": uid } },
       {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "creatorInfo",
+        },
+      },
+      {
+        $addFields: {
+          creator: { $arrayElemAt: ["$creatorInfo", 0] },
+        },
+      },
+      {
         $project: {
           _id: 0,
           sourceType: { $literal: "wholesale" },
@@ -47,6 +60,12 @@ export const getUserOrders = async (req, res) => {
             orderDeadlineDate: "$orderDeadlineDate",
             estimatedDeliveryDate: "$estimatedDeliveryDate",
             dealStatus: "$dealStatus",
+            userId: {
+              _id: "$creator._id",
+              fullName: "$creator.fullName",
+              profilePhotoUrl: "$creator.profilePhotoUrl",
+              phone: "$creator.phone",
+            },
           },
         },
       },
@@ -174,61 +193,102 @@ export const upsertWholesaleOrder = async (req, res) => {
     const now = new Date();
     const userObjId = new mongoose.Types.ObjectId(userId);
 
-    // Fetch unit selling price once to compute totals reliably
-    const dealDocForPrice = await WholesaleDeal.findById(dealId, {
-      "price.sellingPrice": 1,
-    });
-    const unitSellingPrice = Number(dealDocForPrice?.price?.sellingPrice) || 0;
+    const dealDoc = await WholesaleDeal.findById(dealId);
+    if (!dealDoc) {
+      return res.status(404).json({ success: false, code: 404, message: "Deal not found" });
+    }
 
-    // Try to update an existing order by this user on the same deal (increment quantity only)
-    const updateRes = await WholesaleDeal.updateOne(
-      { _id: dealId, "orders.userId": userObjId },
-      {
-        $inc: { "orders.$.quantity": quantity },
-        $set: { "orders.$.updatedAt": now },
+    // Check if deadline passed
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (todayStr > dealDoc.orderDeadlineDate) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: "Order deadline has passed. You cannot place or modify orders for this deal.",
+      });
+    }
+
+    // Max Order Quantity Validation & remaining capacity enforcement
+    const maxQty = Number(dealDoc.maximumOrderQty);
+    if (maxQty && maxQty > 0) {
+      // Calculate total approved/confirmed/delivered orders from OTHER users
+      const totalApprovedQtyOthers = (dealDoc.orders || [])
+        .filter(
+          (o) =>
+            o.userId.toString() !== userId.toString() &&
+            (o.status === "approved" ||
+              o.status === "confirmed" ||
+              o.status === "delivered")
+        )
+        .reduce((sum, o) => sum + (o.quantity || 0), 0);
+
+      const remainingQty = Math.max(0, maxQty - totalApprovedQtyOthers);
+
+      if (quantity > remainingQty) {
+        return res.status(400).json({
+          success: false,
+          code: 400,
+          message: `Cannot order more than the remaining available quantity of ${remainingQty}.`,
+        });
       }
+    }
+
+    const existingOrderIndex = dealDoc.orders.findIndex(
+      (o) => o.userId.toString() === userId.toString()
     );
 
-    if (updateRes.modifiedCount === 0) {
-      // No existing order – push a new one with computed amount
-      await WholesaleDeal.updateOne(
-        { _id: dealId },
-        {
-          $push: {
-            orders: {
-              userId,
-              quantity,
-              amount: quantity * unitSellingPrice,
-              dealerName: req.body.dealerName || "",
-              status: "pending",
-              orderedAt: now,
-              updatedAt: now,
-              delivery: delivery || {},
-            },
-          },
+    const defaultStatus = "approved";
+
+    if (existingOrderIndex > -1) {
+      // User is updating their order quantity or status
+      if (quantity === 0) {
+        // Cancel the order
+        dealDoc.orders[existingOrderIndex].status = "cancelled";
+        dealDoc.orders[existingOrderIndex].quantity = 0;
+        dealDoc.orders[existingOrderIndex].amount = 0;
+      } else {
+        dealDoc.orders[existingOrderIndex].quantity = quantity;
+        dealDoc.orders[existingOrderIndex].amount = quantity * (Number(dealDoc.price?.sellingPrice) || 0);
+        if (dealDoc.orders[existingOrderIndex].status === "cancelled") {
+          dealDoc.orders[existingOrderIndex].status = "approved";
         }
-      );
+      }
+      dealDoc.orders[existingOrderIndex].updatedAt = now;
+      if (delivery) {
+        dealDoc.orders[existingOrderIndex].delivery = delivery;
+      }
+    } else {
+      // New order
+      if (quantity > 0) {
+        dealDoc.orders.push({
+          userId,
+          quantity,
+          amount: quantity * (Number(dealDoc.price?.sellingPrice) || 0),
+          dealerName: req.body.dealerName || "",
+          status: defaultStatus,
+          orderedAt: now,
+          updatedAt: now,
+          delivery: delivery || {},
+        });
+      }
     }
 
-    // Fetch the updated sub-order for this user to get absolute totals and id
-    const updatedDoc = await WholesaleDeal.findOne(
-      { _id: dealId, "orders.userId": userObjId },
-      { "orders.$": 1 }
+    // Recalculate currentOrderedQty (sum of all non-cancelled, non-rejected orders)
+    const activeOrders = dealDoc.orders.filter(
+      (o) => o.status !== "cancelled" && o.status !== "rejected"
     );
-    const userOrder = updatedDoc?.orders?.[0];
+    dealDoc.currentOrderedQty = activeOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+
+    // Save the deal document (runs pre-save lifecycle calculation)
+    await dealDoc.save();
+
+    const userOrder = dealDoc.orders.find((o) => o.userId.toString() === userId.toString());
     const orderDocId = userOrder?._id;
-    const totalQtyForUser = userOrder?.quantity ?? quantity;
-    const computedTotalAmount = totalQtyForUser * unitSellingPrice;
+    const totalQtyForUser = userOrder?.quantity ?? 0;
+    const computedTotalAmount = userOrder?.amount ?? 0;
+    const orderStatus = userOrder?.status ?? "cancelled";
 
-    // Ensure stored sub-order amount equals computed total (absolute set, not increment)
-    if (orderDocId) {
-      await WholesaleDeal.updateOne(
-        { _id: dealId, "orders._id": orderDocId },
-        { $set: { "orders.$.amount": computedTotalAmount } }
-      );
-    }
-
-    // Maintain User.orders pointer with absolute totals
+    // Synchronize User.orders pointer
     const pointerFilter = {
       _id: userId,
       "orders.sourceType": "wholesale",
@@ -237,7 +297,7 @@ export const upsertWholesaleOrder = async (req, res) => {
     const pointerSet = {
       "orders.$.quantity": totalQtyForUser,
       "orders.$.amount": computedTotalAmount,
-      "orders.$.status": userOrder?.status || "pending",
+      "orders.$.status": orderStatus,
       "orders.$.updatedAt": now,
     };
     const pointerRes = await mongoose
@@ -255,7 +315,7 @@ export const upsertWholesaleOrder = async (req, res) => {
               dealerName: req.body.dealerName || "",
               quantity: totalQtyForUser,
               amount: computedTotalAmount,
-              status: userOrder?.status || "pending",
+              status: orderStatus,
               updatedAt: now,
             },
           },
@@ -263,44 +323,25 @@ export const upsertWholesaleOrder = async (req, res) => {
       );
     }
 
-    // Recalculate and update currentOrderedQty on the deal (sum of all orders' quantities)
-    const sumAgg = await WholesaleDeal.aggregate([
-      { $match: { _id: new mongoose.Types.ObjectId(dealId) } },
-      { $unwind: { path: "$orders", preserveNullAndEmptyArrays: true } },
-      {
-        $group: {
-          _id: "$_id",
-          totalQty: { $sum: { $ifNull: ["$orders.quantity", 0] } },
-        },
-      },
-    ]);
-    const totalQty = sumAgg[0]?.totalQty || 0;
-    await WholesaleDeal.updateOne(
-      { _id: dealId },
-      { $set: { currentOrderedQty: totalQty } }
-    );
-
-    return res.status(200).json({
-      success: true,
-      code: res.statusCode,
-      message: "Order upserted",
-      orderId: orderDocId,
-      quantity: totalQtyForUser,
-      amount: computedTotalAmount,
-      currentOrderedQty: totalQty,
-    });
-
-    // Notify Dealer/Admin of new wholesale order
+    // Notify Dealer/Admin
     try {
       await Notification.create({
         type: "ADMIN_ALERT",
-        message: `New wholesale order for ${dealDocForPrice.title}: Qty ${totalQtyForUser}, Amount ${computedTotalAmount}`,
+        message: `New wholesale order for ${dealDoc.title}: Qty ${totalQtyForUser}, Amount ${computedTotalAmount}`,
       });
     } catch (err) {
       console.error("Failed to create notification for wholesale order:", err);
     }
 
-
+    return res.status(200).json({
+      success: true,
+      code: 200,
+      message: "Order updated successfully",
+      orderId: orderDocId,
+      quantity: totalQtyForUser,
+      amount: computedTotalAmount,
+      currentOrderedQty: dealDoc.currentOrderedQty,
+    });
   } catch (error) {
     console.error("Error upserting wholesale order:", error);
     return res
@@ -584,3 +625,72 @@ export const upsertBusinessOrder = async (req, res) => {
       .json({ success: false, code: res.statusCode, message: error.message });
   }
 };
+
+// Update a specific order's status within a WholesaleDeal.
+// Recalculates deal lifecycle status automatically via pre-save hook.
+export const updateOrderStatus = async (req, res) => {
+  try {
+    const { dealId, orderId } = req.params;
+    const { status } = req.body;
+
+    const allowedStatuses = ["pending", "approved", "rejected", "confirmed", "cancelled", "delivered"];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        message: `Invalid status. Must be one of: ${allowedStatuses.join(", ")}`,
+      });
+    }
+
+    if (!mongoose.isValidObjectId(dealId) || !mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ success: false, code: 400, message: "Invalid IDs" });
+    }
+
+    const dealDoc = await WholesaleDeal.findById(dealId);
+    if (!dealDoc) {
+      return res.status(404).json({ success: false, code: 404, message: "Deal not found" });
+    }
+
+    const orderIndex = dealDoc.orders.findIndex((o) => o._id.toString() === orderId);
+    if (orderIndex === -1) {
+      return res.status(404).json({ success: false, code: 404, message: "Order not found" });
+    }
+
+    // Update the order status
+    dealDoc.orders[orderIndex].status = status;
+    dealDoc.orders[orderIndex].updatedAt = new Date();
+
+    // Save triggers pre-save hook which recalculates deal status & currentOrderedQty
+    await dealDoc.save();
+
+    // Re-fetch with populated user data for consistent response
+    const populatedDeal = await WholesaleDeal.findById(dealId)
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl");
+
+    // Sync the updated order status pointer in User.orders
+    const updatedOrder = dealDoc.orders[orderIndex];
+    if (updatedOrder?.userId) {
+      const userId = updatedOrder.userId;
+      await mongoose.model("User").updateOne(
+        {
+          _id: userId,
+          "orders.sourceType": "wholesale",
+          "orders.sourceId": new mongoose.Types.ObjectId(dealId),
+        },
+        { $set: { "orders.$.status": status, "orders.$.updatedAt": new Date() } }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      code: 200,
+      message: `Order status updated to ${status}`,
+      deal: populatedDeal,
+    });
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    return res.status(500).json({ success: false, code: 500, message: error.message });
+  }
+};
+

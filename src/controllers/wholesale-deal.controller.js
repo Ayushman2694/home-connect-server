@@ -36,7 +36,7 @@ export const createWholesaleDeal = async (req, res) => {
     } = req.body;
 
     // ✅ Create deal
-    const deal = await WholesaleDeal.create({
+    let deal = await WholesaleDeal.create({
       title,
       postedBy,
       phone,
@@ -60,6 +60,10 @@ export const createWholesaleDeal = async (req, res) => {
       verificationStatus,
     });
 
+    deal = await WholesaleDeal.findById(deal._id)
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl");
+
     res.status(201).json({
       success: true,
       code: res.statusCode,
@@ -78,10 +82,9 @@ export const createWholesaleDeal = async (req, res) => {
 export const getAllDealsBySocietyId = async (req, res) => {
   try {
     const { societyId } = req.params;
-    const deals = await WholesaleDeal.find({ societyId }).populate(
-      "userId",
-      "fullName phone profilePhotoUrl",
-    );
+    const deals = await WholesaleDeal.find({ societyId })
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl");
     const pendingReq = await WholesaleDeal.countDocuments({ societyId });
     res.status(200).json({
       success: true,
@@ -131,10 +134,7 @@ export const updateDeal = async (req, res) => {
       });
     }
 
-    const deal = await WholesaleDeal.findByIdAndUpdate(dealId, updateData, {
-      new: true, // Return the updated document
-      runValidators: true, // Run validation on update
-    }).lean();
+    const deal = await WholesaleDeal.findById(dealId);
 
     if (!deal) {
       return res.status(404).json({
@@ -144,10 +144,18 @@ export const updateDeal = async (req, res) => {
       });
     }
 
+    // Apply updates
+    Object.assign(deal, updateData);
+    await deal.save();
+
+    const populatedDeal = await WholesaleDeal.findById(deal._id)
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl");
+
     res.json({
       success: true,
       code: res.statusCode,
-      deal,
+      deal: populatedDeal,
     });
   } catch (error) {
     console.error("Error in updateDeal:", error);
@@ -311,9 +319,21 @@ export const updateExpiredDeals = async (req, res) => {
 export const getDealById = async (req, res) => {
   try {
     const { dealId } = req.params;
+
+    // Validate if dealId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(dealId)) {
+      return res.status(400).json({
+        success: false,
+        code: 400,
+        error: "Invalid deal ID format",
+      });
+    }
+
     const deal = await WholesaleDeal.findOne({
       _id: dealId,
-    }).populate("userId", "fullName phone profilePhotoUrl");
+    })
+      .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl");
 
     if (!deal) {
       return res.status(404).json({
@@ -344,6 +364,7 @@ export const getDealsByUserId = async (req, res) => {
     const { userId } = req.params;
     const deals = await WholesaleDeal.find({ userId })
       .populate("userId", "fullName phone profilePhotoUrl")
+      .populate("orders.userId", "fullName phone profilePhotoUrl")
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, code: res.statusCode, deals });
   } catch (error) {

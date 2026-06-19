@@ -25,4 +25,12 @@ export const DEAL_STATUS = {
 export const ResidentTypeEnum = {
   TENANT: "Tenant",
   OWNER: "Owner",
+  ACTIVE: "ACTIVE",
+  UNLOCKING: "UNLOCKING",
+  UNLOCKED: "UNLOCKED",
+  FULL: "FULL",
+  CANCELLED: "CANCELLED",
+  FAILED: "FAILED",
+  COMING_SOON: "COMING_SOON",
+  CLOSING_SOON: "CLOSING_SOON",
 };
