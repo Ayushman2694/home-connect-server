@@ -149,7 +149,12 @@ const FeedSchema = new mongoose.Schema(
           ref: "User",
           required: true,
         },
-        text: { type: String, required: true },
+        text: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: [1000, "Comment cannot exceed 1000 characters"],
+        },
         createdAt: { type: Date, default: Date.now },
       },
     ],

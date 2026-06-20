@@ -2,7 +2,29 @@ import Feed from "../models/feed.model.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
-import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { VERIFICATION_STATUS, USER_ROLES } from "../utils/constants.js";
+
+const COMMENT_USER_FIELDS = "fullName profilePhotoUrl";
+const MAX_COMMENT_LENGTH = 1000;
+
+const normalizeCommentUser = (userField) => {
+  if (!userField) return null;
+  if (typeof userField === "object" && userField._id) {
+    return {
+      _id: userField._id.toString(),
+      fullName: userField.fullName || "User",
+      profilePhotoUrl: userField.profilePhotoUrl || null,
+    };
+  }
+  return { _id: userField.toString(), fullName: "User", profilePhotoUrl: null };
+};
+
+const serializeComment = (comment) => ({
+  _id: comment._id.toString(),
+  user: normalizeCommentUser(comment.user),
+  text: comment.text,
+  createdAt: comment.createdAt,
+});
 
 // Create a new feed (post, poll, event)
 export const createFeeds = async (req, res) => {
@@ -103,22 +125,191 @@ export const toggleLike = async (req, res) => {
   }
 };
 
-// Add a comment to a feed
+// Add a comment to a feed (authenticated — userId from token)
 export const addComment = async (req, res) => {
   try {
     const { feedId } = req.params;
-    const { userId, text } = req.body;
-    const feed = await Feed.findById(feedId);
-    if (!feed)
-      return res
-        .status(404)
-        .json({ success: false, message: "Feed not found" });
-    feed.comments.push({ user: userId, text });
-    await feed.save();
-    await feed.populate("comments.user", "fullName profilePhotoUrl");
-    res.json({ success: true, comments: feed.comments });
+    const { text } = req.body;
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(feedId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid feedId",
+        code: res.statusCode,
+      });
+    }
+
+    const trimmed = String(text || "").trim();
+    if (!trimmed) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment text is required",
+        code: res.statusCode,
+      });
+    }
+    if (trimmed.length > MAX_COMMENT_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Comment cannot exceed ${MAX_COMMENT_LENGTH} characters`,
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findByIdAndUpdate(
+      feedId,
+      {
+        $push: {
+          comments: {
+            user: userId,
+            text: trimmed,
+            createdAt: new Date(),
+          },
+        },
+      },
+      { new: true, runValidators: true },
+    ).populate("comments.user", COMMENT_USER_FIELDS);
+
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    const newComment = feed.comments[feed.comments.length - 1];
+
+    res.status(201).json({
+      success: true,
+      comment: serializeComment(newComment),
+      commentCount: feed.comments.length,
+      code: res.statusCode,
+    });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
+// Get comments for a feed (lazy-loaded when opening comments UI)
+export const getFeedComments = async (req, res) => {
+  try {
+    const { feedId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(feedId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid feedId",
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findById(feedId)
+      .select("comments type")
+      .populate("comments.user", COMMENT_USER_FIELDS)
+      .lean();
+
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    const comments = (feed.comments || [])
+      .map(serializeComment)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+
+    res.json({
+      success: true,
+      feedId,
+      feedType: feed.type,
+      comments,
+      commentCount: comments.length,
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
+  }
+};
+
+// Delete a comment — author or admin/super_admin only
+export const deleteComment = async (req, res) => {
+  try {
+    const { feedId, commentId } = req.params;
+    const requesterId = req.userId?.toString();
+    const requesterRoles = req.user?.roles || [];
+    const isModerator =
+      requesterRoles.includes(USER_ROLES.ADMIN) ||
+      requesterRoles.includes(USER_ROLES.SUPER_ADMIN);
+
+    if (
+      !mongoose.Types.ObjectId.isValid(feedId) ||
+      !mongoose.Types.ObjectId.isValid(commentId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid feedId or commentId",
+        code: res.statusCode,
+      });
+    }
+
+    const feed = await Feed.findById(feedId).select("comments");
+    if (!feed) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+
+    const comment = feed.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+        code: res.statusCode,
+      });
+    }
+
+    const authorId = comment.user?.toString();
+    if (!isModerator && authorId !== requesterId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to delete this comment",
+        code: res.statusCode,
+      });
+    }
+
+    await Feed.findByIdAndUpdate(feedId, {
+      $pull: { comments: { _id: new mongoose.Types.ObjectId(commentId) } },
+    });
+
+    res.json({
+      success: true,
+      message: "Comment deleted",
+      commentId,
+      commentCount: Math.max(0, feed.comments.length - 1),
+      code: res.statusCode,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+      code: res.statusCode,
+    });
   }
 };
 
