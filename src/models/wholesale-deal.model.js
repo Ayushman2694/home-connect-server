@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { DEAL_STATUS, VERIFICATION_STATUS } from "../utils/constants.js";
+import { WHOLESALE_DEAL_STATUS, VERIFICATION_STATUS } from "../utils/constants.js";
 
 const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -72,8 +72,8 @@ const WholesaleDealSchema = new mongoose.Schema(
     dealStatus: {
       type: String,
       trim: true,
-      enum: Object.values(DEAL_STATUS),
-      default: DEAL_STATUS.ACTIVE,
+      enum: Object.values(WHOLESALE_DEAL_STATUS),
+      default: WHOLESALE_DEAL_STATUS.ACTIVE,
     },
     cancellationReason: {
       type: String,

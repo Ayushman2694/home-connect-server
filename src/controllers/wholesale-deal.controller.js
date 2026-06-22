@@ -3,7 +3,7 @@ import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import {
   VERIFICATION_STATUS,
-  DEAL_STATUS,
+  WHOLESALE_DEAL_STATUS,
   USER_ROLES,
 } from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
@@ -195,7 +195,7 @@ export const removeDeal = async (req, res) => {
       {
         $set: {
           isDealActive: false,
-          dealStatus: DEAL_STATUS.CANCELLED,
+          dealStatus: WHOLESALE_DEAL_STATUS.CANCELLED,
           "verificationStatus.status": VERIFICATION_STATUS.SUSPENDED,
           "verificationStatus.rejectionReason": reason ?? null,
           cancelledAt: new Date(),
@@ -295,7 +295,7 @@ export const updateExpiredDeals = async (req, res) => {
       {
         $set: {
           isDealActive: false,
-          dealStatus: DEAL_STATUS.EXPIRED,
+          dealStatus: WHOLESALE_DEAL_STATUS.EXPIRED,
           verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
         },
       },

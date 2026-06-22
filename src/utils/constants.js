@@ -25,6 +25,11 @@ export const DEAL_STATUS = {
 export const ResidentTypeEnum = {
   TENANT: "Tenant",
   OWNER: "Owner",
+};
+
+// Matches the lifecycle statuses WholesaleDeal.pre("save") actually assigns
+// and what the frontend (assets/enums/common.enum.ts DEAL_STATUS) sends/expects.
+export const WHOLESALE_DEAL_STATUS = {
   ACTIVE: "ACTIVE",
   UNLOCKING: "UNLOCKING",
   UNLOCKED: "UNLOCKED",

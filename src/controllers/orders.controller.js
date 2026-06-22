@@ -181,10 +181,14 @@ export const upsertWholesaleOrder = async (req, res) => {
   try {
     const { dealId } = req.params;
     const { userId, quantity = 1, amount = 0, delivery } = req.body;
+    console.log("[OrderDebug] Deal ID:", dealId);
+    console.log("[OrderDebug] User ID:", userId);
+    console.log("[OrderDebug] Payload:", req.body);
     if (
       !mongoose.isValidObjectId(dealId) ||
       !mongoose.isValidObjectId(userId)
     ) {
+      console.log("[OrderDebug] Invalid IDs — dealId valid:", mongoose.isValidObjectId(dealId), "userId valid:", mongoose.isValidObjectId(userId));
       return res
         .status(400)
         .json({ success: false, code: res.statusCode, message: "Invalid IDs" });
