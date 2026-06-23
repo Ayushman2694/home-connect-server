@@ -105,9 +105,11 @@ const FeedSchema = new mongoose.Schema(
     }, // For poll - stores user votes
 
     // Event-specific fields
-    eventDate: { type: String, trim: true }, // For event
+    eventStartDate: { type: String, trim: true }, // For event
+    eventStartTime: { type: String, trim: true }, // For event
+    eventEndDate: { type: String, trim: true }, // For event
+    eventEndTime: { type: String, trim: true }, // For event
     regDeadline: { type: String, trim: true }, // For event
-    eventTime: { type: String, trim: true }, // For event
     maxParticipants: { type: String, trim: true }, // For event
     minParticipants: { type: String, trim: true }, // For event
     registeredParticipants: { type: Number, default: 0 }, // For event

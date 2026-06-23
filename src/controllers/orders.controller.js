@@ -4,7 +4,6 @@ import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
 import { Notification } from "../models/notification.model.js";
 
-
 // Unified user orders across WholesaleDeal.orders[] and Business.orders[]
 // Query shape is normalized for the client
 export const getUserOrders = async (req, res) => {
@@ -13,7 +12,7 @@ export const getUserOrders = async (req, res) => {
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "20", 10), 1),
-      100
+      100,
     );
     const skip = (page - 1) * limit;
 
@@ -105,8 +104,10 @@ export const getUserOrders = async (req, res) => {
             _id: "$_id",
             title: "$title",
             images: "$images",
-            eventDate: "$eventDate",
-            eventTime: "$eventTime",
+            eventStartDate: "$eventStartDate",
+            eventStartTime: "$eventStartTime",
+            eventEndDate: "$eventEndDate",
+            eventEndTime: "$eventEndTime",
             location: "$location",
             registeredParticipants: "$registeredParticipants",
             maxParticipants: "$maxParticipants",
@@ -186,7 +187,7 @@ export const upsertWholesaleOrder = async (req, res) => {
       {
         $inc: { "orders.$.quantity": quantity },
         $set: { "orders.$.updatedAt": now },
-      }
+      },
     );
 
     if (updateRes.modifiedCount === 0) {
@@ -206,14 +207,14 @@ export const upsertWholesaleOrder = async (req, res) => {
               delivery: delivery || {},
             },
           },
-        }
+        },
       );
     }
 
     // Fetch the updated sub-order for this user to get absolute totals and id
     const updatedDoc = await WholesaleDeal.findOne(
       { _id: dealId, "orders.userId": userObjId },
-      { "orders.$": 1 }
+      { "orders.$": 1 },
     );
     const userOrder = updatedDoc?.orders?.[0];
     const orderDocId = userOrder?._id;
@@ -224,7 +225,7 @@ export const upsertWholesaleOrder = async (req, res) => {
     if (orderDocId) {
       await WholesaleDeal.updateOne(
         { _id: dealId, "orders._id": orderDocId },
-        { $set: { "orders.$.amount": computedTotalAmount } }
+        { $set: { "orders.$.amount": computedTotalAmount } },
       );
     }
 
@@ -259,7 +260,7 @@ export const upsertWholesaleOrder = async (req, res) => {
               updatedAt: now,
             },
           },
-        }
+        },
       );
     }
 
@@ -277,7 +278,7 @@ export const upsertWholesaleOrder = async (req, res) => {
     const totalQty = sumAgg[0]?.totalQty || 0;
     await WholesaleDeal.updateOne(
       { _id: dealId },
-      { $set: { currentOrderedQty: totalQty } }
+      { $set: { currentOrderedQty: totalQty } },
     );
 
     return res.status(200).json({
@@ -299,8 +300,6 @@ export const upsertWholesaleOrder = async (req, res) => {
     } catch (err) {
       console.error("Failed to create notification for wholesale order:", err);
     }
-
-
   } catch (error) {
     console.error("Error upserting wholesale order:", error);
     return res
@@ -316,7 +315,7 @@ export const getEventRegistrations = async (req, res) => {
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "20", 10), 1),
-      100
+      100,
     );
     const skip = (page - 1) * limit;
 
@@ -332,15 +331,17 @@ export const getEventRegistrations = async (req, res) => {
       { _id: eventId, type: "event" },
       {
         title: 1,
-        eventDate: 1,
-        eventTime: 1,
+        eventStartDate: 1,
+        eventStartTime: 1,
+        eventEndDate: 1,
+        eventEndTime: 1,
         location: 1,
         price: 1,
         registeredParticipants: 1,
         maxParticipants: 1,
         minParticipants: 1,
         rsvps: 1,
-      }
+      },
     ).populate("rsvps.user", "fullName phoneNumber profilePhotoUrl");
 
     if (!event) {
@@ -377,8 +378,10 @@ export const getEventRegistrations = async (req, res) => {
       event: {
         _id: event._id,
         title: event.title,
-        eventDate: event.eventDate,
-        eventTime: event.eventTime,
+        eventStartDate: event.eventStartDate,
+        eventStartTime: event.eventStartTime,
+        eventEndDate: event.eventEndDate,
+        eventEndTime: event.eventEndTime,
         location: event.location,
         price: event.price,
       },
@@ -402,7 +405,7 @@ export const getUserEventOrders = async (req, res) => {
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "20", 10), 1),
-      100
+      100,
     );
     const skip = (page - 1) * limit;
 
@@ -424,8 +427,10 @@ export const getUserEventOrders = async (req, res) => {
         $project: {
           eventId: "$_id",
           title: 1,
-          eventDate: 1,
-          eventTime: 1,
+          eventStartDate: 1,
+          eventStartTime: 1,
+          eventEndDate: 1,
+          eventEndTime: 1,
           location: 1,
           images: 1,
           price: "$rsvps.price",
@@ -487,7 +492,7 @@ export const upsertBusinessOrder = async (req, res) => {
       {
         $inc: { "orders.$.quantity": quantity, "orders.$.amount": amount },
         $set: { "orders.$.updatedAt": now },
-      }
+      },
     );
 
     let orderDocId;
@@ -507,14 +512,14 @@ export const upsertBusinessOrder = async (req, res) => {
             },
           },
         },
-        { new: true, projection: { orders: 1 } }
+        { new: true, projection: { orders: 1 } },
       );
       const last = pushRes.orders[pushRes.orders.length - 1];
       orderDocId = last?.orderId || last?._id; // we defined orderId on business subdoc
     } else {
       const biz = await Business.findById(businessId, { orders: 1 });
       const found = biz.orders.find(
-        (o) => o.userId.toString() === userId.toString()
+        (o) => o.userId.toString() === userId.toString(),
       );
       orderDocId = found?.orderId || found?._id;
     }
@@ -533,7 +538,7 @@ export const upsertBusinessOrder = async (req, res) => {
         "orders.sourceType": "business",
         "orders.sourceId": new mongoose.Types.ObjectId(businessId),
       },
-      { $set: setUpdate }
+      { $set: setUpdate },
     );
 
     if (userPointerUpdate.matchedCount === 0) {
@@ -551,7 +556,7 @@ export const upsertBusinessOrder = async (req, res) => {
               updatedAt: now,
             },
           },
-        }
+        },
       );
     }
 
@@ -575,8 +580,6 @@ export const upsertBusinessOrder = async (req, res) => {
     } catch (err) {
       console.error("Failed to create notification for business order:", err);
     }
-
-
   } catch (error) {
     console.error("Error upserting business order:", error);
     return res
