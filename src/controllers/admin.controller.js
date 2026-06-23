@@ -1,9 +1,25 @@
+import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import DailyService from "../models/daily-service.model.js";
 import { VERIFICATION_STATUS, USER_ROLES } from "../utils/constants.js";
+
+/** Normalize route param to ObjectId for consistent society-scoped queries */
+const toSocietyObjectId = (societyId) => {
+  if (!societyId || !mongoose.Types.ObjectId.isValid(societyId)) return null;
+  return new mongoose.Types.ObjectId(societyId);
+};
+
+/** Users who submitted a resident profile (not business-only signups) */
+const residentApplicationFilter = {
+  $or: [
+    { roles: USER_ROLES.RESIDENT },
+    { residentType: { $exists: true, $ne: null } },
+    { residentProofUrls: { $exists: true, $not: { $size: 0 } } },
+  ],
+};
 
 // Fetch all reported content across all entity types
 export const getAllReportedContent = async (req, res) => {
@@ -18,17 +34,26 @@ export const getAllReportedContent = async (req, res) => {
       });
     }
 
+    const societyObjectId = toSocietyObjectId(societyId);
+    if (!societyObjectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid societyId",
+        code: res.statusCode,
+      });
+    }
+
     const baseFilter = { totalReportCount: { $gt: 0 } };
 
     const results = await Promise.allSettled([
-      User.find({ ...baseFilter, societyId })
+      User.find({ ...baseFilter, societyId: societyObjectId })
         .select(
           "fullName phone roles profilePhotoUrl report totalReportCount createdAt",
         )
         .populate("report.userId", "fullName phone")
         .lean(),
 
-      Business.find({ ...baseFilter, societyId })
+      Business.find({ ...baseFilter, societyId: societyObjectId })
         .select(
           "title category profilePhotoUrl userId societyId report totalReportCount createdAt",
         )
@@ -36,13 +61,13 @@ export const getAllReportedContent = async (req, res) => {
         .populate("report.userId", "fullName phone")
         .lean(),
 
-      Feed.find({ ...baseFilter, society: societyId })
+      Feed.find({ ...baseFilter, society: societyObjectId })
         .select("title type user society report totalReportCount createdAt")
         .populate("user", "fullName phone")
         .populate("report.userId", "fullName phone")
         .lean(),
 
-      WholesaleDeal.find({ ...baseFilter, societyId })
+      WholesaleDeal.find({ ...baseFilter, societyId: societyObjectId })
         .select(
           "title category userId societyId report totalReportCount createdAt",
         )
@@ -50,7 +75,10 @@ export const getAllReportedContent = async (req, res) => {
         .populate("report.userId", "fullName phone")
         .lean(),
 
-      DailyService.find({ ...baseFilter, societyIds: societyId })
+      DailyService.find({
+        ...baseFilter,
+        societyIds: { $in: [societyObjectId] },
+      })
         .select("name serviceType categoryId report totalReportCount createdAt")
         .populate("report.userId", "fullName phone")
         .lean(),
@@ -141,12 +169,22 @@ export const getAllPendingContent = async (req, res) => {
       });
     }
 
+    const societyObjectId = toSocietyObjectId(societyId);
+    if (!societyObjectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid societyId",
+        code: res.statusCode,
+      });
+    }
+
     const pendingStatus = VERIFICATION_STATUS.PENDING;
 
     const results = await Promise.allSettled([
       User.find({
-        societyId,
+        societyId: societyObjectId,
         "isAddressVerified.status": pendingStatus,
+        ...residentApplicationFilter,
       })
         .select(
           "fullName phone roles profilePhotoUrl completeAddress tower flatNo isAddressVerified createdAt residentType residentProofUrls",
@@ -154,7 +192,7 @@ export const getAllPendingContent = async (req, res) => {
         .lean(),
 
       Business.find({
-        societyId,
+        societyId: societyObjectId,
         "verificationStatus.status": pendingStatus,
       })
         .select(
@@ -164,7 +202,7 @@ export const getAllPendingContent = async (req, res) => {
         .lean(),
 
       WholesaleDeal.find({
-        societyId,
+        societyId: societyObjectId,
         "verificationStatus.status": pendingStatus,
       })
         .select(
@@ -174,7 +212,7 @@ export const getAllPendingContent = async (req, res) => {
         .lean(),
 
       DailyService.find({
-        societyIds: societyId,
+        societyIds: { $in: [societyObjectId] },
         "verificationStatus.status": pendingStatus,
       })
         .select(
@@ -257,14 +295,22 @@ export const getAllApprovedContent = async (req, res) => {
       });
     }
 
+    const societyObjectId = toSocietyObjectId(societyId);
+    if (!societyObjectId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid societyId",
+        code: res.statusCode,
+      });
+    }
+
     const approvedStatus = VERIFICATION_STATUS.APPROVED;
 
     const results = await Promise.allSettled([
       User.find({
-        societyId,
+        societyId: societyObjectId,
         "isAddressVerified.status": approvedStatus,
-        _id: { $ne: "693ad81605d5a6aaf90f7cc9" },
-        roles: USER_ROLES.RESIDENT,
+        ...residentApplicationFilter,
       })
         .select(
           "fullName phone roles profilePhotoUrl completeAddress tower flatNo isAddressVerified createdAt",
@@ -272,17 +318,17 @@ export const getAllApprovedContent = async (req, res) => {
         .lean(),
 
       Business.find({
-        societyId,
+        societyId: societyObjectId,
         "verificationStatus.status": approvedStatus,
       })
         .select(
-          "title category phone email profilePhotoUrl userId societyId verificationStatus createdAt",
+          "title category phone email profilePhotoUrl images userId societyId verificationStatus createdAt completeAddress",
         )
         .populate("userId", "fullName phone roles")
         .lean(),
 
       DailyService.find({
-        societyIds: societyId,
+        societyIds: { $in: [societyObjectId] },
         "verificationStatus.status": approvedStatus,
       })
         .select(
@@ -295,9 +341,8 @@ export const getAllApprovedContent = async (req, res) => {
 
     const approvedResidents =
       residentsResult.status === "fulfilled" ? residentsResult.value : [];
-    const approvedBusinesses = (
-      businessesResult.status === "fulfilled" ? businessesResult.value : []
-    ).filter((b) => b.userId?.roles?.includes(USER_ROLES.BUSINESS));
+    const approvedBusinesses =
+      businessesResult.status === "fulfilled" ? businessesResult.value : [];
     const approvedDailyServices =
       servicesResult.status === "fulfilled" ? servicesResult.value : [];
 

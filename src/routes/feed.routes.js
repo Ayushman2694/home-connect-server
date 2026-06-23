@@ -6,6 +6,8 @@ import {
   toggleLike,
   updateFeed,
   addComment,
+  getFeedComments,
+  deleteComment,
   voteOnPoll,
   getFeedsByUserId,
   deleteFeed,
@@ -15,14 +17,17 @@ import {
   addReview,
   updateRSVPVerificationStatus,
 } from "../controllers/feed.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 router.get("/getfeeds/:societyId", getFeedsBySocietyId);
 router.get("/getFeed/:feedId", getFeedById);
+router.get("/comments/:feedId", getFeedComments);
 router.get("/user/:userId", getFeedsByUserId);
 router.post("/create", createFeeds);
-router.post("/comment/:feedId", addComment);
+router.post("/comment/:feedId", authenticate, addComment);
+router.delete("/comment/:feedId/:commentId", authenticate, deleteComment);
 router.post("/vote/:feedId", voteOnPoll);
 router.post("/rsvp/:feedId", addOrUpdateRSVP);
 router.patch("/rsvp/:feedId/verify/:userId", updateRSVPVerificationStatus);

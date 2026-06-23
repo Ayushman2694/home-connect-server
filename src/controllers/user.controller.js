@@ -477,7 +477,9 @@ export const getUserOrders = async (req, res) => {
             const feed = await mongoose
               .model("Feed")
               .findById(order.sourceId)
-              .select("title eventDate eventTime price")
+              .select(
+                "title eventStartDate eventStartTime eventEndDate eventEndTime price",
+              )
               .lean();
             return {
               ...order,
