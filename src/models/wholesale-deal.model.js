@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { DEAL_STATUS, VERIFICATION_STATUS } from "../utils/constants.js";
+import { WHOLESALE_DEAL_STATUS, VERIFICATION_STATUS } from "../utils/constants.js";
 
 const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -8,7 +8,7 @@ const orderSchema = new mongoose.Schema({
   dealerName: { type: String, required: true },
   status: {
     type: String,
-    enum: ["pending", "confirmed", "cancelled", "delivered"],
+    enum: ["pending", "approved", "rejected", "confirmed", "cancelled", "delivered"],
     default: "pending",
   },
   orderedAt: { type: Date, default: Date.now },
@@ -59,6 +59,7 @@ const WholesaleDealSchema = new mongoose.Schema(
       },
       rejectionReason: { type: String, default: null },
     },
+    orderStartDate: { type: String, default: null },
     orderDeadlineDate: { type: String, required: true },
     estimatedDeliveryDate: { type: String, required: true },
     dealOptions: {
@@ -67,12 +68,12 @@ const WholesaleDealSchema = new mongoose.Schema(
       openBoxDelivery: { type: Boolean, default: false },
       freeSamples: { type: Boolean, default: false },
     },
-    isDealActive: { type: Boolean, default: false },
+    isDealActive: { type: Boolean, default: true },
     dealStatus: {
       type: String,
       trim: true,
-      enum: Object.values(DEAL_STATUS),
-      default: DEAL_STATUS.PENDING,
+      enum: Object.values(WHOLESALE_DEAL_STATUS),
+      default: WHOLESALE_DEAL_STATUS.ACTIVE,
     },
     cancellationReason: {
       type: String,
@@ -131,6 +132,80 @@ const WholesaleDealSchema = new mongoose.Schema(
 // Add indexes for optimized queries by userId and societyId
 WholesaleDealSchema.index({ userId: 1 });
 WholesaleDealSchema.index({ societyId: 1 });
+
+// Pre-save middleware to automate deal lifecycle logic
+WholesaleDealSchema.pre("save", function (next) {
+  const deal = this;
+
+  // If the deal was manually cancelled, keep it CANCELLED
+  if (deal.dealStatus === "CANCELLED") {
+    deal.isDealActive = false;
+    return next();
+  }
+
+  const now = new Date();
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  const deadlineStr = deal.orderDeadlineDate;
+  const startDateStr = deal.orderStartDate;
+const deadlineDate = new Date(deal.orderDeadlineDate);
+    const hoursRemaining =
+      (deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+
+  // Count approved/successful orders: approved, confirmed, delivered
+  const totalApprovedQty = (deal.orders || [])
+    .filter(
+      (o) =>
+        o.status === "approved" ||
+        o.status === "confirmed" ||
+        o.status === "delivered"
+    )
+    .reduce((sum, o) => sum + (o.quantity || 0), 0);
+
+  // Sync currentOrderedQty field in database
+  deal.currentOrderedQty = totalApprovedQty;
+
+  const minQty = Number(deal.minimumOrderQty) || 0;
+  const maxQty = Number(deal.maximumOrderQty) || 0;
+
+  // COMING_SOON: Start date is in the future
+  if (startDateStr && today < startDateStr) {
+    deal.dealStatus = "COMING_SOON";
+    deal.isDealActive = false;
+  }
+  // FAILED: Automatically trigger when: Current date > deadline date AND total approved orders < minQty
+  else if (today > deadlineStr && totalApprovedQty < minQty) {
+    deal.dealStatus = "FAILED";
+    deal.isDealActive = false;
+  }
+  // FULL: Total approved orders reach the maximum order capacity
+  else if (maxQty > 0 && totalApprovedQty >= maxQty) {
+    deal.dealStatus = "FULL";
+    deal.isDealActive = false;
+  }
+  //CLOSING_SOON: When Deal Close after 48 hours that are showing
+  else if (hoursRemaining <= 48 && hoursRemaining > 0) {
+    deal.dealStatus = "CLOSING_SOON";
+    deal.isDealActive = true;
+  }
+  // UNLOCKED: Total approved orders >= minimum required quantity
+  else if (totalApprovedQty >= minQty) {
+    deal.dealStatus = "UNLOCKED";
+    deal.isDealActive = true;
+  }
+  // UNLOCKING / ACTIVE: Goal not reached yet
+  else {
+    if (totalApprovedQty > 0) {
+      deal.dealStatus = "UNLOCKING";
+    } else {
+      deal.dealStatus = "ACTIVE";
+    }
+    deal.isDealActive = true;
+  }
+
+  next();
+});
 
 const WholesaleDeal = mongoose.model("WholesaleDeal", WholesaleDealSchema);
 export default WholesaleDeal;

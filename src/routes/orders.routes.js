@@ -5,6 +5,7 @@ import {
   upsertBusinessOrder,
   getEventRegistrations,
   getUserEventOrders,
+  updateOrderStatus,
 } from "../controllers/orders.controller.js";
 
 const router = express.Router();
@@ -24,4 +25,9 @@ router.get("/event/:eventId/registrations", getEventRegistrations);
 router.post("/wholesale/:dealId/upsert", upsertWholesaleOrder);
 router.post("/business/:businessId/upsert", upsertBusinessOrder);
 
+// PATCH /api/orders/wholesale/:dealId/orders/:orderId/status
+// Updates individual order status and recalculates deal lifecycle
+router.patch("/wholesale/:dealId/orders/:orderId/status", updateOrderStatus);
+
 export default router;
+

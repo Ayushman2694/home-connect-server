@@ -88,6 +88,7 @@ export const verifyOtp = async (req, res) => {
 
     // ----- If user exists -----
     user.lastLogin = new Date();
+
     await user.save();
 
     const token = generateToken(user);
