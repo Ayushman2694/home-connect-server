@@ -1,8 +1,13 @@
 import mongoose from "mongoose";
 import Business from "../models/business.model.js";
 import User from "../models/user.model.js";
-import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
+import {
+  createNotification,
+  createNotificationForMany,
+  getAdminUserIds,
+} from "../services/notification.service.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -101,25 +106,26 @@ export const createBusiness = async (req, res) => {
       }
     }
 
-    // Notify Admin of new business registration
-    try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
-        message: `New business created: ${title} by user ${populatedBusiness.userId?.fullName || userId}`,
-      });
-    } catch (err) {
-      console.error(
-        "Failed to create admin notification for new business:",
-        err,
-      );
-    }
-
     res.status(201).json({
       success: true,
       code: res.statusCode,
       message: "Business created successfully",
       business: populatedBusiness,
     });
+
+    try {
+      const adminIds = await getAdminUserIds();
+      await createNotificationForMany({
+        title: "New Business Verification Request",
+        message: `${title || "A business"} requested business verification.`,
+        notificationType: NOTIFICATION_TYPES.BUSINESS_VERIFICATION_SUBMITTED,
+        sender: userId,
+        receivers: adminIds,
+        metadata: { referenceId: newBusiness._id },
+      });
+    } catch (err) {
+      console.error("Failed to notify admins of new business verification request:", err);
+    }
   } catch (error) {
     console.error("Error in createBusiness:", error);
 
@@ -607,7 +613,7 @@ export const updateBusinessVerificationStatus = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       code: 200,
       message: `Business ${status} successfully`,
@@ -616,6 +622,25 @@ export const updateBusinessVerificationStatus = async (req, res) => {
         verificationStatus: updatedBusiness.verificationStatus,
       },
     });
+
+    const statusNotificationType = {
+      [VERIFICATION_STATUS.APPROVED]: NOTIFICATION_TYPES.BUSINESS_VERIFICATION_APPROVED,
+      [VERIFICATION_STATUS.REJECTED]: NOTIFICATION_TYPES.BUSINESS_VERIFICATION_REJECTED,
+    }[status];
+    if (statusNotificationType) {
+      try {
+        await createNotification({
+          title: status === VERIFICATION_STATUS.APPROVED ? "Business Approved" : "Business Rejected",
+          message: `Your business ${updatedBusiness.title || ""} has been ${status}.`,
+          notificationType: statusNotificationType,
+          receiver: userId,
+          metadata: { referenceId: businessId },
+        });
+      } catch (err) {
+        console.error("Failed to notify user of business verification update:", err);
+      }
+    }
+    return;
   } catch (error) {
     console.error("Error in updateBusinessVerificationStatus:", error);
     res.status(500).json({
@@ -691,11 +716,16 @@ export const reportBusiness = async (req, res) => {
 
     await business.save();
 
-    // Notify Admin of business report
+    // Notify admins of the new report
     try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
+      const adminIds = await getAdminUserIds();
+      await createNotificationForMany({
+        title: "New Report Submitted",
         message: `Business Reported: ${business.title} has been reported for: ${reason}`,
+        notificationType: NOTIFICATION_TYPES.REPORT_SUBMITTED,
+        sender: userId,
+        receivers: adminIds,
+        metadata: { referenceId: business._id },
       });
     } catch (err) {
       console.error(

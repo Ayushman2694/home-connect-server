@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import dotenv from "dotenv";
 import connectDB from "./database/db.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -13,7 +14,9 @@ import notificationRoutes from "./routes/notification.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 import mediaRoutes from "./routes/media.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
-import { startNotificationWatcher } from "./watchers/notification.watcher.js";
+import reportRoutes from "./routes/report.routes.js";
+import { initSocket } from "./realtime/socket.js";
+import { startEventReminderCron } from "./cron/eventReminder.cron.js";
 
 dotenv.config();
 
@@ -34,9 +37,13 @@ app.use("/api/notification", notificationRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/media", mediaRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/reports", reportRoutes);
 
-app.listen(process.env.PORT || 3000, () => {
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
+httpServer.listen(process.env.PORT || 3000, () => {
   connectDB();
-  startNotificationWatcher();
+  startEventReminderCron();
   console.log(`Server running on port ${process.env.PORT}`);
 });

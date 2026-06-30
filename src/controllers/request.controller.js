@@ -1,6 +1,7 @@
 import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
-import { Notification } from "../models/notification.model.js";
+import { createNotification } from "../services/notification.service.js";
+import { NOTIFICATION_TYPES } from "../utils/constants.js";
 
 export const getAllRequests = async (req, res) => {
   try {
@@ -51,14 +52,21 @@ export const updateRequestStatus = async (req, res) => {
     }
 
     // Notify User of request status update
-    try {
-      await Notification.create({
-        type: "REQUEST_UPDATE",
-        userId: updatedRequest.user.toString(),
-        message: `Your request status has been updated to: ${status}`,
-      });
-    } catch (err) {
-      console.error("Failed to create user notification for request update:", err);
+    const statusNotificationType = {
+      approved: NOTIFICATION_TYPES.RESIDENT_VERIFICATION_APPROVED,
+      rejected: NOTIFICATION_TYPES.RESIDENT_VERIFICATION_REJECTED,
+    }[status];
+    if (statusNotificationType) {
+      try {
+        await createNotification({
+          title: status === "approved" ? "Verification Approved" : "Verification Rejected",
+          message: `Your resident verification request has been ${status}.`,
+          notificationType: statusNotificationType,
+          receiver: updatedRequest.user,
+        });
+      } catch (err) {
+        console.error("Failed to create user notification for request update:", err);
+      }
     }
 
     res.json({ success: true, request: updatedRequest });

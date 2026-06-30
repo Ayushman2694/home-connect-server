@@ -12,7 +12,6 @@ import {
   getUserOrders,
   reportUser,
   isUserBusinessAllowed,
-  savePushToken,
 } from "../controllers/user.controller.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 const router = express.Router();
@@ -25,7 +24,6 @@ router.post("/report/:userId", authenticate, reportUser);
 router.patch("/:userId", updateUser);
 // Get a single user by id
 router.get("/:userId", getUserById);
-router.patch("/:userId/push-token", savePushToken);
 router.get("/sync/:userId", syncUserBusinessIds);
 router.get("/getPendingUsers/:societyId", getPendingUsersBySocietyId);
 router.get("/permission/:userId", authenticate, isUserBusinessAllowed);

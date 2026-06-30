@@ -3,8 +3,12 @@ import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
-import { Notification } from "../models/notification.model.js";
-import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
+import {
+  createNotification,
+  createNotificationForMany,
+  getAdminUserIds,
+} from "../services/notification.service.js";
 
 export const createUser = async (req, res) => {
   try {
@@ -57,28 +61,16 @@ export const createUser = async (req, res) => {
 
     // ── Notify all admins of new resident registration ──
     try {
-      await notifyAdmins(
-        societyId,
-        "New Resident Registration 🏠",
-        `${fullName} has submitted a resident profile for approval.`,
-        { screen: "/(admin)/pending-approvals", type: "new_resident" },
-      );
+      const adminIds = await getAdminUserIds();
+      await createNotificationForMany({
+        title: "New Resident Registration",
+        message: `${fullName} has submitted a resident profile for approval.`,
+        notificationType: NOTIFICATION_TYPES.RESIDENT_VERIFICATION_SUBMITTED,
+        receivers: adminIds,
+        metadata: { referenceId: newUser._id },
+      });
     } catch (err) {
       console.error("Failed to notify admins:", err);
-    }
-
-    // ── Notify the new user that their request is submitted ──
-    try {
-      if (newUser.pushToken) {
-        await sendPushNotification({
-          token: newUser.pushToken,
-          title: "Registration Submitted ✅",
-          body: "Your resident profile has been submitted and is pending approval.",
-          data: { screen: "/(tabs)/home", type: "registration_submitted" },
-        });
-      }
-    } catch (err) {
-      console.error("Failed to notify new user:", err);
     }
 
     return res.status(201).json({
@@ -184,7 +176,7 @@ export const updateUser = async (req, res) => {
 
     // Fetch old user to compare verification status
     const oldUser = await User.findById(userId).select(
-      "isAddressVerified pushToken fullName",
+      "isAddressVerified fullName",
     );
 
     const user = await User.findByIdAndUpdate(userId, updates, {
@@ -205,24 +197,20 @@ export const updateUser = async (req, res) => {
       const newStatus = updates?.isAddressVerified?.status;
 
       if (newStatus && oldStatus !== newStatus) {
-        await sendPushNotificationToUser(
-          user,
-          newStatus === "approved"
-            ? "Profile Approved 🎉"
-            : "Profile Rejected ❌",
-          newStatus === "approved"
-            ? "Your resident profile has been approved! You now have full access."
-            : updates?.isAddressVerified?.rejectionReason
-              ? `Your profile was rejected: ${updates.isAddressVerified.rejectionReason}`
-              : "Your resident profile was rejected. Please contact support.",
-          {
-            screen:
-              newStatus === "approved"
-                ? "/(tabs)/home"
-                : "/(shared)/update-profile",
-            type: `approval_${newStatus}`,
-          },
-        );
+        await createNotification({
+          title: newStatus === "approved" ? "Profile Approved" : "Profile Rejected",
+          message:
+            newStatus === "approved"
+              ? "Your resident profile has been approved! You now have full access."
+              : updates?.isAddressVerified?.rejectionReason
+                ? `Your profile was rejected: ${updates.isAddressVerified.rejectionReason}`
+                : "Your resident profile was rejected. Please contact support.",
+          notificationType:
+            newStatus === "approved"
+              ? NOTIFICATION_TYPES.RESIDENT_VERIFICATION_APPROVED
+              : NOTIFICATION_TYPES.RESIDENT_VERIFICATION_REJECTED,
+          receiver: user._id,
+        });
       }
     } catch (err) {
       console.error("Failed to send approval notification:", err);
@@ -410,6 +398,20 @@ export const removeUser = async (req, res) => {
       `Deleted ${feedDeleteResult.deletedCount} feeds for user ${userId}`,
     );
 
+    const userBeforeDelete = await User.findById(userId).select("fullName");
+    if (userBeforeDelete) {
+      try {
+        await createNotification({
+          title: "Removed from Community",
+          message: "You have been removed from the community by an admin.",
+          notificationType: NOTIFICATION_TYPES.COMMUNITY_REMOVED,
+          receiver: userId,
+        });
+      } catch (err) {
+        console.error("Failed to notify user of community removal:", err);
+      }
+    }
+
     // Then, delete the user
     const user = await User.findByIdAndDelete(userId);
     if (!user) {
@@ -564,11 +566,16 @@ export const reportUser = async (req, res) => {
 
     await reportedUser.save();
 
-    // Notify Admin of user report
+    // Notify admins of the new report
     try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
+      const adminIds = await getAdminUserIds();
+      await createNotificationForMany({
+        title: "New Report Submitted",
         message: `User Reported: ${reportedUser.fullName} has been reported for: ${reason}`,
+        notificationType: NOTIFICATION_TYPES.REPORT_SUBMITTED,
+        sender: userId,
+        receivers: adminIds,
+        metadata: { referenceId: reportedUser._id },
       });
     } catch (err) {
       console.error(
@@ -648,27 +655,5 @@ export const isUserBusinessAllowed = async (req, res) => {
       message: "Error checking business creation authorization",
       code: res.statusCode,
     });
-  }
-};
-
-export const savePushToken = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { pushToken } = req.body;
-
-    if (!pushToken) {
-      return res
-        .status(400)
-        .json({ success: false, message: "pushToken is required" });
-    }
-
-    // Add token only if not already stored — avoids duplicates
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { pushTokens: pushToken },
-    });
-
-    res.status(200).json({ success: true });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
   }
 };

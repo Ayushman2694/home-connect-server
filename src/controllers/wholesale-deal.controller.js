@@ -5,9 +5,15 @@ import {
   VERIFICATION_STATUS,
   WHOLESALE_DEAL_STATUS,
   USER_ROLES,
+  NOTIFICATION_TYPES,
 } from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 import Business from "../models/business.model.js";
+import { logReport } from "../services/report.service.js";
+import {
+  createNotificationForMany,
+  getSocietyUserIds,
+} from "../services/notification.service.js";
 
 export const createWholesaleDeal = async (req, res) => {
   try {
@@ -63,6 +69,22 @@ export const createWholesaleDeal = async (req, res) => {
     deal = await WholesaleDeal.findById(deal._id)
       .populate("userId", "fullName phone profilePhotoUrl")
       .populate("orders.userId", "fullName phone profilePhotoUrl");
+
+    if (societyId) {
+      try {
+        const societyUserIds = await getSocietyUserIds(societyId);
+        await createNotificationForMany({
+          title: "New Deal Added",
+          message: `${deal.userId?.fullName || "Someone"} added a new wholesale deal: ${deal.title}`,
+          notificationType: NOTIFICATION_TYPES.DEAL_CREATED,
+          sender: userId,
+          receivers: societyUserIds,
+          metadata: { dealId: deal._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify society of new deal:", err);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -157,6 +179,26 @@ export const updateDeal = async (req, res) => {
       code: res.statusCode,
       deal: populatedDeal,
     });
+
+    const interestedUserIds = [...new Set(
+      (deal.orders || [])
+        .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
+        .map((o) => String(o.userId)),
+    )];
+    if (interestedUserIds.length > 0) {
+      try {
+        await createNotificationForMany({
+          title: `Deal Updated: ${deal.title}`,
+          message: "A deal you ordered from has been updated.",
+          notificationType: NOTIFICATION_TYPES.DEAL_UPDATED,
+          sender: deal.userId,
+          receivers: interestedUserIds,
+          metadata: { dealId: deal._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify interested users of deal update:", err);
+      }
+    }
   } catch (error) {
     console.error("Error in updateDeal:", error);
 
@@ -222,33 +264,15 @@ export const removeDeal = async (req, res) => {
           ),
         ];
 
-        const users = await User.find(
-          {
-            _id: { $in: orderedUserIds },
-            pushTokens: { $exists: true, $ne: [] },
-          },
-          { pushTokens: 1 },
-        );
-
-        const messages = users.flatMap((u) =>
-          (u.pushTokens ?? []).filter(Boolean).map((token) => ({
-            to: token,
-            sound: "default",
-            title: `Deal Cancelled: ${deal.title}`,
-            body: reason
-              ? `Reason: ${reason}`
-              : "This deal has been cancelled by the organizer.",
-            data: { type: "deal_cancelled", dealId: deal._id.toString() },
-          })),
-        );
-
-        if (messages.length > 0) {
-          await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(messages),
-          });
-        }
+        await createNotificationForMany({
+          title: `Deal Cancelled: ${deal.title}`,
+          message: reason
+            ? `Reason: ${reason}`
+            : "This deal has been cancelled by the organizer.",
+          notificationType: NOTIFICATION_TYPES.DEAL_CANCELLED,
+          receivers: orderedUserIds,
+          metadata: { dealId: deal._id },
+        });
       } catch (notifyErr) {
         console.error(
           "Failed to notify users of deal cancellation:",
@@ -286,26 +310,51 @@ export const updateExpiredDeals = async (req, res) => {
 
     // Get current date and normalize to YYYY-MM-DD format for string comparison
     const today = new Date().toISOString().split("T")[0]; // Will give "2025-10-13"
-    // Update the deals
-    const result = await WholesaleDeal.updateMany(
-      {
-        societyId,
-        orderDeadlineDate: { $lt: today }, // Only strict less than
+
+    // Snapshot which deals are *about to* transition to EXPIRED (excludes
+    // ones already expired) so the "Deal Closed" notification below fires
+    // exactly once per deal, not on every call to this endpoint.
+    const filter = {
+      societyId,
+      orderDeadlineDate: { $lt: today },
+      dealStatus: { $ne: WHOLESALE_DEAL_STATUS.EXPIRED },
+    };
+    const newlyExpiredDeals = await WholesaleDeal.find(filter).select("title userId orders");
+
+    const result = await WholesaleDeal.updateMany(filter, {
+      $set: {
+        isDealActive: false,
+        dealStatus: WHOLESALE_DEAL_STATUS.EXPIRED,
+        verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
       },
-      {
-        $set: {
-          isDealActive: false,
-          dealStatus: WHOLESALE_DEAL_STATUS.EXPIRED,
-          verificationStatus: { status: VERIFICATION_STATUS.REJECTED },
-        },
-      },
-    );
+    });
 
     res.status(200).json({
       success: true,
       code: res.statusCode,
       message: "Expired deals updated successfully",
     });
+
+    for (const deal of newlyExpiredDeals) {
+      const participantIds = [...new Set(
+        (deal.orders || [])
+          .filter((o) => o.status !== "cancelled" && o.status !== "rejected")
+          .map((o) => String(o.userId)),
+      )];
+      if (participantIds.length === 0) continue;
+      try {
+        await createNotificationForMany({
+          title: `Deal Closed: ${deal.title}`,
+          message: `${deal.title} is no longer accepting new orders.`,
+          notificationType: NOTIFICATION_TYPES.DEAL_CLOSED,
+          sender: deal.userId,
+          receivers: participantIds,
+          metadata: { dealId: deal._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify participants of deal closure:", err);
+      }
+    }
   } catch (error) {
     console.error("Error updating expired deals:", error);
     res.status(500).json({
@@ -445,6 +494,20 @@ export const reportDeal = async (req, res) => {
 
     // Save the deal
     await deal.save();
+
+    // Best-effort write to the permanent, queryable report log used by the
+    // "My Reports" screens — awaited so it's guaranteed to be queryable by
+    // the time this response reaches the client (logReport never throws).
+    if (deal.userId) {
+      await logReport({
+        reporterId: userId,
+        reportedUserId: deal.userId,
+        contentType: "deal",
+        contentId: deal._id,
+        contentTitle: deal.title || "",
+        reason,
+      });
+    }
 
     res.status(200).json({
       success: true,

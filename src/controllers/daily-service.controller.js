@@ -1,8 +1,8 @@
 import DailyService from "../models/daily-service.model.js";
-import { Notification } from "../models/notification.model.js";
-import { VERIFICATION_STATUS } from "../utils/constants.js";
+import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
+import { createNotificationForMany, getAdminUserIds } from "../services/notification.service.js";
 
 export const createDailyService = async (req, res) => {
   try {
@@ -443,11 +443,16 @@ export const reportDailyService = async (req, res) => {
 
     await helper.save();
 
-    // Notify Admin of daily service report
+    // Notify admins of the new report
     try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
+      const adminIds = await getAdminUserIds();
+      await createNotificationForMany({
+        title: "New Report Submitted",
         message: `Daily Service Helper Reported: ${helper.name} has been reported for: ${reason}`,
+        notificationType: NOTIFICATION_TYPES.REPORT_SUBMITTED,
+        sender: userId,
+        receivers: adminIds,
+        metadata: { referenceId: helper._id },
       });
     } catch (err) {
       console.error("Failed to create admin notification for reported helper:", err);

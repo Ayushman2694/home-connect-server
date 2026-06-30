@@ -133,7 +133,7 @@ const FeedSchema = new mongoose.Schema(
           status: {
             type: String,
             enum: Object.values(VERIFICATION_STATUS),
-            default: VERIFICATION_STATUS.PENDING,
+            default: VERIFICATION_STATUS.APPROVED,
           },
           rejectionReason: { type: String, default: null },
         },
@@ -163,6 +163,10 @@ const FeedSchema = new mongoose.Schema(
 
     // Likes: array of user references
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // Event reminder/completion cron bookkeeping (prevents duplicate sends)
+    reminderSent: { type: Boolean, default: false }, // For event
+    completedNotified: { type: Boolean, default: false }, // For event
   },
   { timestamps: true },
 );

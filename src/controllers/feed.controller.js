@@ -1,5 +1,6 @@
 import Feed from "../models/feed.model.js";
 import User from "../models/user.model.js";
+import CommentReport from "../models/commentReport.model.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 import { VERIFICATION_STATUS, USER_ROLES } from "../utils/constants.js";
@@ -31,6 +32,45 @@ export const createFeeds = async (req, res) => {
   try {
     const feed = await Feed.create(req.body);
     res.status(201).json({ success: true, feed, code: res.statusCode });
+
+    if (feed.society) {
+      try {
+        const societyUserIds = await getSocietyUserIds(feed.society);
+        const author = feed.user ? await User.findById(feed.user).select("fullName") : null;
+        const authorName = author?.fullName || "Someone";
+
+        if (feed.type === "event") {
+          await createNotificationForMany({
+            title: "New Event Added",
+            message: `${feed.title || "A new event"} has been added.`,
+            notificationType: NOTIFICATION_TYPES.EVENT_CREATED,
+            sender: feed.user,
+            receivers: societyUserIds,
+            metadata: { eventId: feed._id },
+          });
+        } else if (feed.type === "post") {
+          await createNotificationForMany({
+            title: "New Post",
+            message: `${authorName} added a new post.`,
+            notificationType: NOTIFICATION_TYPES.POST_CREATED,
+            sender: feed.user,
+            receivers: societyUserIds,
+            metadata: { referenceId: feed._id },
+          });
+        } else if (feed.type === "poll") {
+          await createNotificationForMany({
+            title: "New Poll",
+            message: `${authorName} created a new poll: ${feed.title || ""}`.trim(),
+            notificationType: NOTIFICATION_TYPES.POLL_CREATED,
+            sender: feed.user,
+            receivers: societyUserIds,
+            metadata: { referenceId: feed._id },
+          });
+        }
+      } catch (err) {
+        console.error("Failed to notify society of new feed item:", err);
+      }
+    }
   } catch (error) {
     res
       .status(400)
@@ -111,13 +151,29 @@ export const toggleLike = async (req, res) => {
         code: res.statusCode,
       });
     const index = feed.likes.indexOf(userId);
-    if (index === -1) {
+    const isLiking = index === -1;
+    if (isLiking) {
       feed.likes.push(userId);
     } else {
       feed.likes.splice(index, 1);
     }
     await feed.save();
     res.json({ success: true, feed: feed, code: res.statusCode });
+
+    if (isLiking && feed.user && String(feed.user) !== String(userId)) {
+      try {
+        await createNotification({
+          title: "New Like",
+          message: "Someone liked your post.",
+          notificationType: NOTIFICATION_TYPES.POST_LIKED,
+          sender: userId,
+          receiver: feed.user,
+          metadata: { referenceId: feed._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify feed owner of like:", err);
+      }
+    }
   } catch (error) {
     res
       .status(400)
@@ -446,6 +502,21 @@ export const voteOnPoll = async (req, res) => {
       userVote: { userId, optionId },
       code: res.statusCode,
     });
+
+    if (feed.user && String(feed.user) !== String(userId)) {
+      try {
+        await createNotification({
+          title: "New Vote",
+          message: "Someone voted on your poll.",
+          notificationType: NOTIFICATION_TYPES.POLL_VOTED,
+          sender: userId,
+          receiver: feed.user,
+          metadata: { referenceId: feed._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify poll owner of vote:", err);
+      }
+    }
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -465,6 +536,20 @@ export const deleteFeed = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Feed not found" });
     res.json({ success: true, message: "Feed deleted" });
+
+    if (feed.type === "event" && feed.rsvps?.length > 0) {
+      try {
+        await createNotificationForMany({
+          title: "Event Cancelled",
+          message: `${feed.title || "An event"} you registered for has been cancelled.`,
+          notificationType: NOTIFICATION_TYPES.EVENT_CANCELLED,
+          receivers: feed.rsvps.map((r) => r.user),
+          metadata: { eventId: feed._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify registrants of event cancellation:", err);
+      }
+    }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -556,7 +641,7 @@ export const addOrUpdateRSVP = async (req, res) => {
         },
       );
     } else {
-      // Push new RSVP with verification status defaulting to pending
+      // Push new RSVP, auto-approved (no pending state for events)
       feed = await Feed.findByIdAndUpdate(
         feedId,
         {
@@ -568,7 +653,7 @@ export const addOrUpdateRSVP = async (req, res) => {
               profilePhotoUrl,
               fullName,
               verificationStatus: {
-                status: VERIFICATION_STATUS.PENDING,
+                status: VERIFICATION_STATUS.APPROVED,
                 rejectionReason: null,
               },
             },
@@ -643,6 +728,21 @@ export const addOrUpdateRSVP = async (req, res) => {
       registeredParticipants: totalParticipants,
       code: res.statusCode,
     });
+
+    if (!isUpdate && feed.user && String(feed.user) !== String(userId)) {
+      try {
+        await createNotification({
+          title: "New Event Registration",
+          message: `${fullName || "Someone"} registered for ${feed.title || "your event"}.`,
+          notificationType: NOTIFICATION_TYPES.EVENT_REGISTRATION,
+          sender: userId,
+          receiver: feed.user,
+          metadata: { eventId: feed._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify event creator of new registration:", err);
+      }
+    }
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -768,6 +868,21 @@ export const removeRSVP = async (req, res) => {
       registeredParticipants: totalParticipants,
       code: res.statusCode,
     });
+
+    if (feed.user && String(feed.user) !== String(userId)) {
+      try {
+        await createNotification({
+          title: "Event Registration Cancelled",
+          message: `A registration for ${feed.title || "your event"} was cancelled.`,
+          notificationType: NOTIFICATION_TYPES.EVENT_REGISTRATION_CANCELLED,
+          sender: userId,
+          receiver: feed.user,
+          metadata: { eventId: feed._id },
+        });
+      } catch (err) {
+        console.error("Failed to notify event creator of RSVP cancellation:", err);
+      }
+    }
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -858,6 +973,24 @@ export const updateRSVPVerificationStatus = async (req, res) => {
       rsvps: updatedFeed.rsvps,
       code: res.statusCode,
     });
+
+    const statusNotificationType = {
+      [VERIFICATION_STATUS.APPROVED]: NOTIFICATION_TYPES.EVENT_REGISTRATION_APPROVED,
+      [VERIFICATION_STATUS.REJECTED]: NOTIFICATION_TYPES.EVENT_REGISTRATION_REJECTED,
+    }[status];
+    if (statusNotificationType) {
+      try {
+        await createNotification({
+          title: status === VERIFICATION_STATUS.APPROVED ? "Registration Approved" : "Registration Rejected",
+          message: `Your registration for ${updatedFeed.title || "the event"} has been ${status}.`,
+          notificationType: statusNotificationType,
+          receiver: userId,
+          metadata: { eventId: feedId },
+        });
+      } catch (err) {
+        console.error("Failed to notify registrant of RSVP status update:", err);
+      }
+    }
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -1016,6 +1149,20 @@ export const reportFeed = async (req, res) => {
 
     // Save the feed
     await feed.save();
+
+    // Best-effort write to the permanent, queryable report log used by the
+    // "My Reports" screens — awaited so it's guaranteed to be queryable by
+    // the time this response reaches the client (logReport never throws).
+    if (feed.user) {
+      await logReport({
+        reporterId: userId,
+        reportedUserId: feed.user,
+        contentType: feed.type, // "post" | "poll" | "event"
+        contentId: feed._id,
+        contentTitle: feed.title || feed.content?.slice(0, 100) || "",
+        reason,
+      });
+    }
 
     res.status(200).json({
       success: true,

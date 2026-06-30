@@ -3,6 +3,7 @@ import Feed from "../models/feed.model.js";
 import Business from "../models/business.model.js";
 import DailyService from "../models/daily-service.model.js";
 import WholesaleDeal from "../models/wholesale-deal.model.js";
+import CommentReport from "../models/commentReport.model.js";
 
 /**
  * Counts the total number of reports a user has made today across all reportable collections.
@@ -31,6 +32,11 @@ export async function getUserReportsToday(userId) {
     return (result[0] && result[0].count) || 0;
   }
 
+  const commentReports = await CommentReport.countDocuments({
+    reporterId: userObjId,
+    createdAt: { $gte: startOfDay, $lte: endOfDay },
+  });
+
   const [feed, business, service, deal] = await Promise.all([
     countReports(Feed),
     countReports(Business),
@@ -38,5 +44,5 @@ export async function getUserReportsToday(userId) {
     countReports(WholesaleDeal),
   ]);
 
-  return feed + business + service + deal;
+  return feed + business + service + deal + commentReports;
 }

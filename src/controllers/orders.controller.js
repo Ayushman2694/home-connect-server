@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import WholesaleDeal from "../models/wholesale-deal.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
-import { Notification } from "../models/notification.model.js";
+import { createNotification } from "../services/notification.service.js";
+import { NOTIFICATION_TYPES } from "../utils/constants.js";
 
 // Unified user orders across WholesaleDeal.orders[] and Business.orders[]
 // Query shape is normalized for the client
@@ -251,6 +252,7 @@ export const upsertWholesaleOrder = async (req, res) => {
     );
 
     const defaultStatus = "approved";
+    const wasCancelled = existingOrderIndex > -1 && quantity === 0;
 
     if (existingOrderIndex > -1) {
       // User is updating their order quantity or status
@@ -342,14 +344,42 @@ export const upsertWholesaleOrder = async (req, res) => {
       );
     }
 
-    // Notify Dealer/Admin
-    try {
-      await Notification.create({
-        type: "ADMIN_ALERT",
-        message: `New wholesale order for ${dealDoc.title}: Qty ${totalQtyForUser}, Amount ${computedTotalAmount}`,
-      });
-    } catch (err) {
-      console.error("Failed to create notification for wholesale order:", err);
+    // Notify deal creator + the orderer (skip self-orders / cancellations)
+    if (totalQtyForUser > 0) {
+      try {
+        if (String(dealDoc.userId) !== String(userId)) {
+          await createNotification({
+            title: "New Order Received",
+            message: `Someone placed an order for your deal: ${dealDoc.title}`,
+            notificationType: NOTIFICATION_TYPES.DEAL_ORDERED,
+            sender: userId,
+            receiver: dealDoc.userId,
+            metadata: { dealId: dealDoc._id, orderId: orderDocId },
+          });
+        }
+        await createNotification({
+          title: "Order Successfully Placed",
+          message: `Your order for ${dealDoc.title} has been placed successfully.`,
+          notificationType: NOTIFICATION_TYPES.ORDER_PLACED,
+          receiver: userId,
+          metadata: { dealId: dealDoc._id, orderId: orderDocId },
+        });
+      } catch (err) {
+        console.error("Failed to create notification for wholesale order:", err);
+      }
+    } else if (wasCancelled && String(dealDoc.userId) !== String(userId)) {
+      try {
+        await createNotification({
+          title: "Order Cancelled",
+          message: `Someone cancelled an order for your deal: ${dealDoc.title}`,
+          notificationType: NOTIFICATION_TYPES.DEAL_ORDER_CANCELLED,
+          sender: userId,
+          receiver: dealDoc.userId,
+          metadata: { dealId: dealDoc._id, orderId: orderDocId },
+        });
+      } catch (err) {
+        console.error("Failed to create notification for wholesale order cancellation:", err);
+      }
     }
 
     return res.status(200).json({
@@ -621,6 +651,30 @@ export const upsertBusinessOrder = async (req, res) => {
       );
     }
 
+    // Notify business owner + the orderer (skip self-orders)
+    try {
+      const biz = await Business.findById(businessId).select("userId title");
+      if (biz?.userId && String(biz.userId) !== String(userId)) {
+        await createNotification({
+          title: "New Order Received",
+          message: `New order for ${biz.title}: Qty ${quantity}, Amount ${amount}`,
+          notificationType: NOTIFICATION_TYPES.DEAL_ORDERED,
+          sender: userId,
+          receiver: biz.userId,
+          metadata: { dealId: biz._id, orderId: orderDocId },
+        });
+      }
+      await createNotification({
+        title: "Order Successfully Placed",
+        message: `Your order for ${biz?.title || "your order"} has been placed successfully.`,
+        notificationType: NOTIFICATION_TYPES.ORDER_PLACED,
+        receiver: userId,
+        metadata: { dealId: businessId, orderId: orderDocId },
+      });
+    } catch (err) {
+      console.error("Failed to create notification for business order:", err);
+    }
+
     return res.status(200).json({
       success: true,
       code: res.statusCode,
@@ -723,6 +777,24 @@ export const updateOrderStatus = async (req, res) => {
           $set: { "orders.$.status": status, "orders.$.updatedAt": new Date() },
         },
       );
+
+      const statusNotificationType = {
+        approved: NOTIFICATION_TYPES.ORDER_APPROVED,
+        rejected: NOTIFICATION_TYPES.ORDER_REJECTED,
+      }[status];
+      if (statusNotificationType) {
+        try {
+          await createNotification({
+            title: status === "approved" ? "Order Approved" : "Order Rejected",
+            message: `Your order for ${dealDoc.title} has been ${status}.`,
+            notificationType: statusNotificationType,
+            receiver: userId,
+            metadata: { dealId: dealDoc._id, orderId },
+          });
+        } catch (err) {
+          console.error("Failed to create notification for order status update:", err);
+        }
+      }
     }
 
     return res.status(200).json({
