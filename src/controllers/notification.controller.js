@@ -1,5 +1,6 @@
 import { AdminToken } from "../models/adminToken.model.js";
 import { UserToken } from "../models/userToken.model.js";
+import User from "../models/user.model.js";
 import admin from "../config/firebase.js"; // Firebase Admin SDK
 import {
   findByReceiver,
@@ -13,6 +14,13 @@ import {
   getSocietyUserIds,
 } from "../services/notification.service.js";
 import { NOTIFICATION_TYPES, USER_ROLES } from "../utils/constants.js";
+
+// FCM error codes that indicate a token is permanently dead.
+const DEAD_TOKEN_CODES = new Set([
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+  "messaging/invalid-argument",
+]);
 
 export const registerAdminToken = async (req, res) => {
   try {
@@ -214,5 +222,110 @@ export const sendAnnouncement = async (req, res) => {
   } catch (err) {
     console.error("Error sending announcement:", err);
     res.status(500).json({ success: false, code: res.statusCode, message: err.message });
+  }
+};
+
+/**
+ * Developer test endpoint — sends a real FCM push to a user identified by
+ * mobile number, bypassing the in-app notification system so each layer can
+ * be validated independently.
+ *
+ * POST /api/notification/test
+ * Body: { mobileNumber, title, body, data? }
+ *
+ * Returns { success, message } on both success and well-defined failure so
+ * the caller always gets a structured response.
+ */
+export const testPushNotification = async (req, res) => {
+  try {
+    const { mobileNumber, title, body, data } = req.body;
+
+    if (!mobileNumber || !title || !body) {
+      return res.status(400).json({
+        success: false,
+        message: "mobileNumber, title, and body are required",
+      });
+    }
+
+    // 1. Resolve user by mobile number
+    const user = await User.findOne({ phone: mobileNumber }).select("_id fullName");
+    if (!user) {
+      console.warn(`[test-push] No user found for mobileNumber: ${mobileNumber}`);
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    console.log(`[test-push] Resolved user: ${user._id} (${user.fullName || "—"})`);
+
+    // 2. Fetch FCM tokens for this user
+    const tokenDocs = await UserToken.find({ userId: user._id })
+      .sort({ createdAt: -1 })
+      .select("token -_id");
+    const tokens = tokenDocs.map((t) => t.token);
+
+    if (tokens.length === 0) {
+      console.warn(`[test-push] No FCM tokens registered for user ${user._id}`);
+      return res.status(404).json({ success: false, message: "User token not found" });
+    }
+    console.log(`[test-push] Found ${tokens.length} token(s) for user ${user._id}`);
+
+    // 3. Build payload — all data values must be strings for FCM
+    const safeData = {
+      notificationType: "TEST",
+      ...Object.fromEntries(
+        Object.entries(data || {})
+          .filter(([, v]) => v != null)
+          .map(([k, v]) => [k, String(v)]),
+      ),
+    };
+
+    const payload = { notification: { title, body }, data: safeData, tokens };
+
+    // 4. Send via Firebase Admin SDK
+    let response;
+    try {
+      response = await admin.messaging().sendEachForMulticast(payload);
+    } catch (fcmErr) {
+      console.error("[test-push] FCM sendEachForMulticast threw:", fcmErr.message);
+      return res.status(502).json({ success: false, message: `Firebase error: ${fcmErr.message}` });
+    }
+
+    console.log(
+      `[test-push] FCM result: ${response.successCount} succeeded, ${response.failureCount} failed`,
+    );
+
+    // 5. Log and prune dead tokens
+    const deadTokens = [];
+    response.responses.forEach((result, idx) => {
+      if (result.success) return;
+      const code = result.error?.code;
+      console.warn(
+        `[test-push] ❌ Token ${tokens[idx].slice(0, 16)}… failed: ${code} — ${result.error?.message}`,
+      );
+      if (DEAD_TOKEN_CODES.has(code)) deadTokens.push(tokens[idx]);
+    });
+
+    if (deadTokens.length > 0) {
+      await UserToken.deleteMany({ token: { $in: deadTokens } });
+      console.log(`[test-push] Pruned ${deadTokens.length} dead token(s)`);
+    }
+
+    // 6. Respond
+    if (response.successCount > 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Notification sent successfully",
+        successCount: response.successCount,
+        failureCount: response.failureCount,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Notification delivery failed — all tokens rejected",
+      successCount: 0,
+      failureCount: response.failureCount,
+    });
+  } catch (err) {
+    console.error("[test-push] Unexpected error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
