@@ -1,49 +1,59 @@
 import admin from "firebase-admin";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-/**
- * Load the Firebase service account.
- * - Production: provide it via env var (the JSON file is git-ignored and not
- *   deployed, so reading it at boot would crash the server).
- *     • FIREBASE_SERVICE_ACCOUNT_BASE64 — base64-encoded JSON (recommended;
- *       avoids newline/escaping issues with the private key).
- *     • FIREBASE_SERVICE_ACCOUNT — raw JSON string.
- * - Local dev: fall back to the git-ignored ./firebase-service.json if present.
- */
+// Resolve the service account file relative to this config file's directory
+// so the path is correct regardless of the process working directory.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SERVICE_ACCOUNT_PATH = path.resolve(
+  __dirname,
+  "../../firebase-service.json",
+);
+
 function loadServiceAccount() {
-  const { FIREBASE_SERVICE_ACCOUNT_BASE64, FIREBASE_SERVICE_ACCOUNT } =
-    process.env;
+  if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
+    throw new Error(
+      `Firebase service account not found at ${SERVICE_ACCOUNT_PATH}. ` +
+        "Download it from Firebase Console → Project Settings → Service Accounts " +
+        "and place it at the project root as firebase-service.json.",
+    );
+  }
+
+  let raw;
+  try {
+    raw = fs.readFileSync(SERVICE_ACCOUNT_PATH, "utf-8");
+  } catch (err) {
+    throw new Error(`Failed to read firebase-service.json: ${err.message}`);
+  }
 
   try {
-    if (FIREBASE_SERVICE_ACCOUNT_BASE64) {
-      return JSON.parse(
-        Buffer.from(FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf-8"),
-      );
-    }
-    if (FIREBASE_SERVICE_ACCOUNT) {
-      return JSON.parse(FIREBASE_SERVICE_ACCOUNT);
-    }
-    if (fs.existsSync("./firebase-service.json")) {
-      return JSON.parse(fs.readFileSync("./firebase-service.json", "utf-8"));
-    }
+    return JSON.parse(raw);
   } catch (err) {
-    console.error("Failed to parse Firebase service account:", err.message);
+    throw new Error(
+      `firebase-service.json contains invalid JSON: ${err.message}`,
+    );
   }
-  return null;
 }
 
-const serviceAccount = loadServiceAccount();
+// Only initialize once — guard against hot-module re-evaluation in dev
+if (!admin.apps.length) {
+  let serviceAccount;
+  try {
+    serviceAccount = loadServiceAccount();
+  } catch (err) {
+    // Log clearly and exit — the server cannot send push notifications without
+    // valid Firebase credentials. Swallowing this would silently break pushes.
+    console.error("❌ Firebase Admin initialization failed:", err.message);
+    process.exit(1);
+  }
 
-if (serviceAccount) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
-} else {
-  // Boot without Firebase rather than crashing the whole server. Push
-  // notification calls (admin.messaging()) will fail and are handled where used.
-  console.warn(
-    "⚠️ Firebase service account not configured. Set FIREBASE_SERVICE_ACCOUNT_BASE64 " +
-      "to enable push notifications. Continuing without Firebase Admin.",
+
+  console.log(
+    `✅ Firebase Admin initialized (project: ${serviceAccount.project_id || "unknown"})`,
   );
 }
 
