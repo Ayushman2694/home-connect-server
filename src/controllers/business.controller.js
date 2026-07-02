@@ -8,6 +8,7 @@ import {
   createNotificationForMany,
   getAdminUserIds,
 } from "../services/notification.service.js";
+import { isAdminUser } from "../middleware/auth.middleware.js";
 
 export const createBusiness = async (req, res) => {
   try {
@@ -124,7 +125,10 @@ export const createBusiness = async (req, res) => {
         metadata: { referenceId: newBusiness._id },
       });
     } catch (err) {
-      console.error("Failed to notify admins of new business verification request:", err);
+      console.error(
+        "Failed to notify admins of new business verification request:",
+        err,
+      );
     }
   } catch (error) {
     console.error("Error in createBusiness:", error);
@@ -624,20 +628,28 @@ export const updateBusinessVerificationStatus = async (req, res) => {
     });
 
     const statusNotificationType = {
-      [VERIFICATION_STATUS.APPROVED]: NOTIFICATION_TYPES.BUSINESS_VERIFICATION_APPROVED,
-      [VERIFICATION_STATUS.REJECTED]: NOTIFICATION_TYPES.BUSINESS_VERIFICATION_REJECTED,
+      [VERIFICATION_STATUS.APPROVED]:
+        NOTIFICATION_TYPES.BUSINESS_VERIFICATION_APPROVED,
+      [VERIFICATION_STATUS.REJECTED]:
+        NOTIFICATION_TYPES.BUSINESS_VERIFICATION_REJECTED,
     }[status];
     if (statusNotificationType) {
       try {
         await createNotification({
-          title: status === VERIFICATION_STATUS.APPROVED ? "Business Approved" : "Business Rejected",
+          title:
+            status === VERIFICATION_STATUS.APPROVED
+              ? "Business Approved"
+              : "Business Rejected",
           message: `Your business ${updatedBusiness.title || ""} has been ${status}.`,
           notificationType: statusNotificationType,
           receiver: userId,
           metadata: { referenceId: businessId },
         });
       } catch (err) {
-        console.error("Failed to notify user of business verification update:", err);
+        console.error(
+          "Failed to notify user of business verification update:",
+          err,
+        );
       }
     }
     return;
@@ -747,6 +759,62 @@ export const reportBusiness = async (req, res) => {
       success: false,
       message: error.message,
       code: res.statusCode,
+    });
+  }
+};
+
+// Delete a business (owner or admin/super_admin). Active deals/events belong to
+// the owner (not the business) and are intentionally left untouched — the client
+// surfaces them so an admin can decide before confirming.
+export const deleteBusiness = async (req, res) => {
+  try {
+    const { businessId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(businessId)) {
+      return res
+        .status(400)
+        .json({ success: false, code: 400, error: "Invalid businessId" });
+    }
+
+    const business = await Business.findById(businessId).select("userId");
+    if (!business) {
+      return res
+        .status(404)
+        .json({ success: false, code: 404, error: "Business not found" });
+    }
+
+    // Authorization: only the business owner or an admin/super_admin.
+    const isOwner =
+      business.userId && String(business.userId) === String(req.userId);
+    if (!isOwner && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "You are not allowed to delete this business",
+      });
+    }
+
+    await Business.findByIdAndDelete(businessId);
+
+    // Remove the dangling pointer from the owner's businessIds array.
+    if (business.userId) {
+      await User.updateOne(
+        { _id: business.userId },
+        { $pull: { businessIds: { id: businessId } } },
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      code: 200,
+      message: "Business deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in deleteBusiness:", error);
+    res.status(500).json({
+      success: false,
+      code: 500,
+      error: "Error deleting business",
     });
   }
 };

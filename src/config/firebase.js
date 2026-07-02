@@ -6,7 +6,10 @@ import { fileURLToPath } from "url";
 // Resolve the service account file relative to this config file's directory
 // so the path is correct regardless of the process working directory.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVICE_ACCOUNT_PATH = path.resolve(__dirname, "../../firebase-service.json");
+const SERVICE_ACCOUNT_PATH = path.resolve(
+  __dirname,
+  "../../firebase-service.json",
+);
 
 function loadServiceAccount() {
   if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
@@ -27,7 +30,9 @@ function loadServiceAccount() {
   try {
     return JSON.parse(raw);
   } catch (err) {
-    throw new Error(`firebase-service.json contains invalid JSON: ${err.message}`);
+    throw new Error(
+      `firebase-service.json contains invalid JSON: ${err.message}`,
+    );
   }
 }
 

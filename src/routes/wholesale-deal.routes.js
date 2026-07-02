@@ -10,6 +10,7 @@ import {
   reportDeal,
   getDealPostingAccountsByUserId,
 } from "../controllers/wholesale-deal.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -21,6 +22,6 @@ router.get("/posting-accounts/:userId", getDealPostingAccountsByUserId);
 router.post("/create", createWholesaleDeal);
 router.post("/report/:dealId", reportDeal);
 router.patch("/:dealId", updateDeal);
-router.delete("/:dealId", removeDeal);
+router.delete("/:dealId", authenticate, removeDeal);
 
 export default router;

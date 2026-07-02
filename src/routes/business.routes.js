@@ -12,8 +12,10 @@ import {
   addOrUpdateBusinessReview,
   reportBusiness,
   updateBusinessVerificationStatus,
+  deleteBusiness,
 } from "../controllers/business.controller.js";
-import { authenticate } from "../middleware/auth.middleware.js";
+import { authenticate, authorize } from "../middleware/auth.middleware.js";
+import { USER_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
@@ -45,7 +47,10 @@ router.post("/report/:businessId", authenticate, reportBusiness);
 router.patch(
   "/:businessId/status",
   authenticate,
+  authorize(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
   updateBusinessVerificationStatus,
 );
+// Delete a business (owner or admin/super_admin — enforced in the controller)
+router.delete("/:businessId", authenticate, deleteBusiness);
 
 export default router;

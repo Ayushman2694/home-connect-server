@@ -530,11 +530,29 @@ export const voteOnPoll = async (req, res) => {
 export const deleteFeed = async (req, res) => {
   try {
     const { feedId } = req.params;
-    const feed = await Feed.findByIdAndDelete(feedId);
+
+    const feed = await Feed.findById(feedId).select("user");
     if (!feed)
       return res
         .status(404)
         .json({ success: false, message: "Feed not found" });
+
+    // Only the author or an admin / super_admin may delete a feed.
+    const requesterRoles = req.user?.roles || [];
+    const isModerator =
+      requesterRoles.includes(USER_ROLES.ADMIN) ||
+      requesterRoles.includes(USER_ROLES.SUPER_ADMIN);
+    const isOwner =
+      feed.user && String(feed.user) === String(req.userId);
+
+    if (!isModerator && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to delete this post",
+      });
+    }
+
+    await Feed.findByIdAndDelete(feedId);
     res.json({ success: true, message: "Feed deleted" });
 
     if (feed.type === "event" && feed.rsvps?.length > 0) {

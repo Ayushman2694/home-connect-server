@@ -21,7 +21,7 @@ router.get("/getUsers/:societyId", getAllUserBySocietyId);
 router.get("/:userId/requests", getRequestByUserId);
 router.get("/:userId/orders", authenticate, getUserOrders);
 router.post("/report/:userId", authenticate, reportUser);
-router.patch("/:userId", updateUser);
+router.patch("/:userId", authenticate, updateUser);
 // Get a single user by id
 router.get("/:userId", getUserById);
 router.get("/sync/:userId", syncUserBusinessIds);

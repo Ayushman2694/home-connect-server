@@ -3,12 +3,21 @@ import Request from "../models/request.model.js";
 import User from "../models/user.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
-import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
 import {
   createNotification,
   createNotificationForMany,
   getAdminUserIds,
 } from "../services/notification.service.js";
+import WholesaleDeal from "../models/wholesale-deal.model.js";
+import DailyService from "../models/daily-service.model.js";
+import { Notification } from "../models/notification.model.js";
+import {
+  VERIFICATION_STATUS,
+  USER_ROLES,
+  WHOLESALE_DEAL_STATUS,
+  NOTIFICATION_TYPES,
+} from "../utils/constants.js";
+import { isAdminUser } from "../middleware/auth.middleware.js";
 
 export const createUser = async (req, res) => {
   try {
@@ -149,6 +158,46 @@ export const updateUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = { ...req.body };
+
+    // ── Authorization ──────────────────────────────────────────────────────
+    // Only the account owner or an admin/super_admin may update a user.
+    const requesterIsAdmin = isAdminUser(req.user);
+    const isSelf = String(req.userId) === String(userId);
+
+    if (!requesterIsAdmin && !isSelf) {
+      return res.status(403).json({
+        message: "You are not allowed to update this user",
+        status: "failure",
+        code: 403,
+      });
+    }
+
+    // Non-admins (self-service updates) cannot escalate privileges or
+    // self-approve. They may only (re)submit verification as "pending" and
+    // hold non-privileged roles. Moderation fields are stripped outright.
+    if (!requesterIsAdmin) {
+      delete updates.report;
+      delete updates.totalReportCount;
+
+      if (updates.isAddressVerified) {
+        const submittedStatus = updates.isAddressVerified.status;
+        if (submittedStatus !== VERIFICATION_STATUS.PENDING) {
+          delete updates.isAddressVerified;
+        }
+      }
+
+      if (Array.isArray(updates.roles)) {
+        const allowedSelfRoles = [
+          USER_ROLES.GUEST,
+          USER_ROLES.RESIDENT,
+          USER_ROLES.BUSINESS,
+        ];
+        updates.roles = updates.roles.filter((r) =>
+          allowedSelfRoles.includes(r),
+        );
+        if (updates.roles.length === 0) delete updates.roles;
+      }
+    }
     // Sanitize email
     if (Object.prototype.hasOwnProperty.call(updates, "email")) {
       if (typeof updates.email === "string") {
@@ -198,7 +247,8 @@ export const updateUser = async (req, res) => {
 
       if (newStatus && oldStatus !== newStatus) {
         await createNotification({
-          title: newStatus === "approved" ? "Profile Approved" : "Profile Rejected",
+          title:
+            newStatus === "approved" ? "Profile Approved" : "Profile Rejected",
           message:
             newStatus === "approved"
               ? "Your resident profile has been approved! You now have full access."
@@ -388,18 +438,212 @@ export const getPendingUsersBySocietyId = async (req, res) => {
 };
 
 // Remove a user by userId
+/**
+ * Remove every lingering reference to a user from documents owned by *other*
+ * members — comments, likes, poll votes, event RSVPs, reviews and reports — and
+ * recompute the cached counters those arrays feed (participant count, report
+ * count, rating averages). Orders are intentionally preserved as they are
+ * financial commitments. Best-effort: the caller treats failures as non-fatal.
+ */
+const scrubUserReferences = async (userId) => {
+  const uid = new mongoose.Types.ObjectId(userId);
+
+  const filterOut = (field, key) => ({
+    $filter: {
+      input: { $ifNull: [`$${field}`, []] },
+      as: "item",
+      cond: key ? { $ne: [`$$item.${key}`, uid] } : { $ne: ["$$item", uid] },
+    },
+  });
+
+  await Promise.all([
+    // Feeds: traces left on other members' posts / polls / events.
+    Feed.updateMany(
+      {
+        $or: [
+          { likes: uid },
+          { "comments.user": uid },
+          { "votes.userId": uid },
+          { "rsvps.user": uid },
+          { "reviews.userId": uid },
+          { "report.userId": uid },
+        ],
+      },
+      [
+        {
+          $set: {
+            likes: filterOut("likes"),
+            comments: filterOut("comments", "user"),
+            votes: filterOut("votes", "userId"),
+            rsvps: filterOut("rsvps", "user"),
+            reviews: filterOut("reviews", "userId"),
+            report: filterOut("report", "userId"),
+          },
+        },
+        {
+          $set: {
+            registeredParticipants: { $sum: "$rsvps.participants" },
+            totalReportCount: { $size: "$report" },
+          },
+        },
+      ],
+    ),
+
+    // Businesses: reviews and reports left by the user.
+    Business.updateMany(
+      { $or: [{ "reviews.userId": uid }, { "report.userId": uid }] },
+      [
+        {
+          $set: {
+            reviews: filterOut("reviews", "userId"),
+            report: filterOut("report", "userId"),
+          },
+        },
+        {
+          $set: {
+            totalReportCount: { $size: "$report" },
+            avgRating: {
+              $cond: [
+                { $gt: [{ $size: "$reviews" }, 0] },
+                { $avg: "$reviews.rating" },
+                0,
+              ],
+            },
+          },
+        },
+      ],
+    ),
+
+    // Wholesale deals: reviews and reports left by the user.
+    WholesaleDeal.updateMany(
+      { $or: [{ "reviews.userId": uid }, { "report.userId": uid }] },
+      [
+        {
+          $set: {
+            reviews: filterOut("reviews", "userId"),
+            report: filterOut("report", "userId"),
+          },
+        },
+        { $set: { totalReportCount: { $size: "$report" } } },
+      ],
+    ),
+
+    // Daily services (shared): drop membership, reviews and reports, and unset
+    // ownership when this user created the entry.
+    DailyService.updateMany(
+      {
+        $or: [
+          { userIds: uid },
+          { "reviews.userId": uid },
+          { "report.userId": uid },
+          { createdBy: uid },
+        ],
+      },
+      [
+        {
+          $set: {
+            userIds: filterOut("userIds"),
+            reviews: filterOut("reviews", "userId"),
+            report: filterOut("report", "userId"),
+            createdBy: {
+              $cond: [{ $eq: ["$createdBy", uid] }, null, "$createdBy"],
+            },
+          },
+        },
+        {
+          $set: {
+            totalReportCount: { $size: "$report" },
+            averageRating: {
+              $cond: [
+                { $gt: [{ $size: "$reviews" }, 0] },
+                { $avg: "$reviews.rating" },
+                0,
+              ],
+            },
+          },
+        },
+      ],
+    ),
+
+    // Reports this user filed against other users.
+    User.updateMany({ "report.userId": uid }, [
+      { $set: { report: filterOut("report", "userId") } },
+      { $set: { totalReportCount: { $size: "$report" } } },
+    ]),
+
+    // The user's own requests and notifications.
+    Request.deleteMany({ user: uid }),
+    Notification.deleteMany({ userId: String(userId) }),
+  ]);
+};
+
 export const removeUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // First, delete all feeds created by the user
-    const feedDeleteResult = await Feed.deleteMany({ user: userId });
-    console.log(
-      `Deleted ${feedDeleteResult.deletedCount} feeds for user ${userId}`,
-    );
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res
+        .status(400)
+        .json({ success: false, code: 400, message: "Invalid userId" });
+    }
 
-    const userBeforeDelete = await User.findById(userId).select("fullName");
-    if (userBeforeDelete) {
+    // ── Authorization: only the account owner or an admin/super_admin ──
+    const requesterIsAdmin = isAdminUser(req.user);
+    const isSelf = String(req.userId) === String(userId);
+    if (!requesterIsAdmin && !isSelf) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        message: "You are not allowed to delete this account",
+      });
+    }
+
+    // Fetch (do NOT delete yet) — all guards below must run before deletion.
+    const user = await User.findById(userId);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, code: 404, message: "User not found" });
+    }
+
+    // ── Guard: block deletion while the user still has active deals/events ──
+    // The user must close (cancel) these first so participants/buyers aren't
+    // left with dangling commitments.
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    const [activeDeals, activeEvents] = await Promise.all([
+      // A deal is "active" while its lifecycle keeps isDealActive true
+      // (ACTIVE / UNLOCKING / UNLOCKED / CLOSING_SOON / COMING_SOON).
+      WholesaleDeal.find({
+        userId,
+        isDealActive: true,
+        dealStatus: { $ne: WHOLESALE_DEAL_STATUS.CANCELLED },
+      })
+        .select("_id title dealStatus")
+        .lean(),
+      // An event is "active" while it has a future/ongoing end date.
+      Feed.find({
+        user: userId,
+        type: "event",
+        eventEndDate: { $nin: [null, ""], $gte: today },
+      })
+        .select("_id title eventEndDate")
+        .lean(),
+    ]);
+
+    if (activeDeals.length > 0 || activeEvents.length > 0) {
+      return res.status(409).json({
+        success: false,
+        code: 409,
+        message:
+          "Please close your active deals and events before deleting your account.",
+        activeDeals,
+        activeEvents,
+      });
+    }
+
+    // Notify the member only when an admin removes them (self-deletion is silent).
+    if (!isSelf) {
       try {
         await createNotification({
           title: "Removed from Community",
@@ -412,22 +656,44 @@ export const removeUser = async (req, res) => {
       }
     }
 
-    // Then, delete the user
-    const user = await User.findByIdAndDelete(userId);
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    // ── Cascade delete the user's owned content, then the user ──
+    const [feedResult, businessResult, dealResult] = await Promise.all([
+      Feed.deleteMany({ user: userId }),
+      Business.deleteMany({ userId }),
+      WholesaleDeal.deleteMany({ userId }),
+    ]);
+
+    // Scrub the user's scattered references from other members' documents.
+    // Best-effort — a failure here must not block account deletion.
+    try {
+      await scrubUserReferences(userId);
+    } catch (scrubErr) {
+      console.error(
+        `Failed to scrub references for user ${userId} (continuing):`,
+        scrubErr,
+      );
     }
+
+    await User.findByIdAndDelete(userId);
+
+    console.log(
+      `Removed user ${userId}: ${feedResult.deletedCount} feeds, ` +
+        `${businessResult.deletedCount} businesses, ${dealResult.deletedCount} deals`,
+    );
 
     res.status(200).json({
       success: true,
+      code: 200,
       message: "User removed successfully",
-      feedsDeleted: feedDeleteResult.deletedCount,
+      feedsDeleted: feedResult.deletedCount,
+      businessesDeleted: businessResult.deletedCount,
+      dealsDeleted: dealResult.deletedCount,
     });
   } catch (error) {
     console.error("Error in removeUser:", error);
-    res.status(500).json({ success: false, message: "Error removing user" });
+    res
+      .status(500)
+      .json({ success: false, code: 500, message: "Error removing user" });
   }
 };
 
