@@ -1,5 +1,12 @@
 import { verifyToken } from "../utils/generateToken.js";
 import User from "../models/user.model.js";
+import { USER_ROLES } from "../utils/constants.js";
+
+// True when the user holds an admin or super_admin role.
+export const isAdminUser = (user) =>
+  Array.isArray(user?.roles) &&
+  (user.roles.includes(USER_ROLES.ADMIN) ||
+    user.roles.includes(USER_ROLES.SUPER_ADMIN));
 
 export const authenticate = async (req, res, next) => {
   try {
@@ -100,7 +107,8 @@ export const authorize = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    if (!userRoles.some((r) => roles.includes(r))) {
       return res.status(403).json({
         success: false,
         code: 403,

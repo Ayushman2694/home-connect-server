@@ -35,13 +35,16 @@ export const createWholesaleDeal = async (req, res) => {
       dealOptions,
       isDealActive,
       userId,
-      dealStatus,
       orders,
       societyId,
       verificationStatus,
     } = req.body;
 
     // ✅ Create deal
+    // NOTE: `dealStatus` is intentionally NOT taken from the client. The model
+    // default ("ACTIVE") and the pre("save") lifecycle hook set the correct
+    // uppercase status. Accepting the client value caused validation failures
+    // (the app sends lowercase "active", which isn't a valid enum member).
     let deal = await WholesaleDeal.create({
       title,
       postedBy,
@@ -60,7 +63,6 @@ export const createWholesaleDeal = async (req, res) => {
       dealOptions,
       isDealActive,
       userId,
-      dealStatus,
       orders,
       societyId,
       verificationStatus,
@@ -231,6 +233,32 @@ export const removeDeal = async (req, res) => {
   try {
     const { dealId } = req.params;
     const { reason } = req.body;
+
+    // Only the deal owner or an admin / super_admin may cancel a deal.
+    const existingDeal = await WholesaleDeal.findById(dealId).select("userId");
+    if (!existingDeal) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        error: "Deal not found",
+      });
+    }
+
+    const requesterRoles = req.user?.roles || [];
+    const isModerator =
+      requesterRoles.includes(USER_ROLES.ADMIN) ||
+      requesterRoles.includes(USER_ROLES.SUPER_ADMIN);
+    const isOwner =
+      existingDeal.userId &&
+      String(existingDeal.userId) === String(req.userId);
+
+    if (!isModerator && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "You are not allowed to cancel this deal",
+      });
+    }
 
     const deal = await WholesaleDeal.findByIdAndUpdate(
       dealId,

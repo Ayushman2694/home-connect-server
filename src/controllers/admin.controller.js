@@ -196,7 +196,7 @@ export const getAllPendingContent = async (req, res) => {
         "verificationStatus.status": pendingStatus,
       })
         .select(
-          "title category phone email profilePhotoUrl userId societyId verificationStatus createdAt completeAddress",
+          "title category phone email profilePhotoUrl userId societyId verificationStatus createdAt completeAddress description gstNumber businessPhone",
         )
         .populate("userId", "fullName phone")
         .lean(),

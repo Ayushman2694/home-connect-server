@@ -7,7 +7,10 @@ export const generateToken = (user) => {
         sub: String(user._id),
         userId: String(user._id),
         email: user.email,
-        role: user.role || "resident",
+        roles:
+          Array.isArray(user.roles) && user.roles.length
+            ? user.roles
+            : ["guest"],
       },
       process.env.JWT_SECRET || "default_secret",
       { algorithm: "HS256", expiresIn: "60d" }

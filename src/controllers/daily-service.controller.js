@@ -2,7 +2,11 @@ import DailyService from "../models/daily-service.model.js";
 import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
-import { createNotificationForMany, getAdminUserIds } from "../services/notification.service.js";
+import {
+  createNotificationForMany,
+  getAdminUserIds,
+} from "../services/notification.service.js";
+import { isAdminUser } from "../middleware/auth.middleware.js";
 
 export const createDailyService = async (req, res) => {
   try {
@@ -73,7 +77,7 @@ export const createDailyService = async (req, res) => {
       const updated = await DailyService.findByIdAndUpdate(
         existingUser._id,
         { $addToSet: addToSet },
-        { new: true }
+        { new: true },
       );
 
       return res.status(200).json({
@@ -276,6 +280,15 @@ export const updateDailyService = async (req, res) => {
 
     // Remove not allowed fields from updates
     notAllowedUpdates.forEach((field) => delete updates[field]);
+
+    // Only admins / super admins may change the verification (approval) status.
+    if (updates.verificationStatus && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "Only an admin can change verification status",
+      });
+    }
     // If report is being updated, sync totalReportCount with reason array length
     if (updates.report && Array.isArray(updates.report.reason)) {
       updates.report.totalReportCount = updates.report.reason.length;
@@ -283,7 +296,7 @@ export const updateDailyService = async (req, res) => {
     const updatedHelper = await DailyService.findByIdAndUpdate(
       helperId,
       updates,
-      { new: true }
+      { new: true },
     );
 
     if (!updatedHelper) {
@@ -337,7 +350,7 @@ export const addDailyServiceReview = async (req, res) => {
           },
         },
       },
-      { new: true, select: "reviews", lean: true }
+      { new: true, select: "reviews", lean: true },
     );
     if (!pushResult) {
       return res.status(404).json({
@@ -422,7 +435,7 @@ export const reportDailyService = async (req, res) => {
 
     const userObjectIdStr = new mongoose.Types.ObjectId(userId).toString();
     const existingReport = helper.report.find(
-      (report) => report.userId.toString() === userObjectIdStr
+      (report) => report.userId.toString() === userObjectIdStr,
     );
 
     if (existingReport) {
@@ -455,9 +468,11 @@ export const reportDailyService = async (req, res) => {
         metadata: { referenceId: helper._id },
       });
     } catch (err) {
-      console.error("Failed to create admin notification for reported helper:", err);
+      console.error(
+        "Failed to create admin notification for reported helper:",
+        err,
+      );
     }
-
 
     res.status(200).json({
       success: true,
@@ -473,5 +488,49 @@ export const reportDailyService = async (req, res) => {
       message: error.message,
       code: res.statusCode,
     });
+  }
+};
+
+// Delete a daily service (creator or admin/super_admin).
+export const deleteDailyService = async (req, res) => {
+  try {
+    const { helperId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(helperId)) {
+      return res
+        .status(400)
+        .json({ success: false, code: 400, error: "Invalid helperId" });
+    }
+
+    const helper = await DailyService.findById(helperId).select("createdBy");
+    if (!helper) {
+      return res
+        .status(404)
+        .json({ success: false, code: 404, error: "Service not found" });
+    }
+
+    // Authorization: only the creator or an admin/super_admin.
+    const isOwner =
+      helper.createdBy && String(helper.createdBy) === String(req.userId);
+    if (!isOwner && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "You are not allowed to delete this service",
+      });
+    }
+
+    await DailyService.findByIdAndDelete(helperId);
+
+    return res.status(200).json({
+      success: true,
+      code: 200,
+      message: "Service deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in deleteDailyService:", error);
+    res
+      .status(500)
+      .json({ success: false, code: 500, error: "Error deleting service" });
   }
 };

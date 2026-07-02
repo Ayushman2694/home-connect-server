@@ -36,6 +36,6 @@ router.post("/review/:feedId", addReview);
 router.delete("/rsvp/:feedId", removeRSVP);
 router.patch("/:feedId/like", toggleLike);
 router.patch("/update/:feedId", updateFeed);
-router.delete("/:feedId", deleteFeed);
+router.delete("/:feedId", authenticate, deleteFeed);
 
 export default router;
