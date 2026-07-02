@@ -3,26 +3,32 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Resolve the service account file relative to this config file's directory
-// so the path is correct regardless of the process working directory.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SERVICE_ACCOUNT_PATH = path.resolve(
-  __dirname,
-  "../../firebase-service.json",
-);
+
+// Candidate locations for the service account file, in priority order:
+//  1. Render "Secret Files" mount (runtime)        → /etc/secrets/firebase-service.json
+//  2. Explicit override                            → FIREBASE_SERVICE_ACCOUNT_PATH
+//  3. Project-root copy (local dev, git-ignored)   → ../../firebase-service.json
+const SERVICE_ACCOUNT_PATHS = [
+  "/etc/secrets/firebase-service.json",
+  process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+  path.resolve(__dirname, "../../firebase-service.json"),
+].filter(Boolean);
 
 function loadServiceAccount() {
-  if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
+  const filePath = SERVICE_ACCOUNT_PATHS.find((p) => fs.existsSync(p));
+  if (!filePath) {
     throw new Error(
-      `Firebase service account not found at ${SERVICE_ACCOUNT_PATH}. ` +
-        "Download it from Firebase Console → Project Settings → Service Accounts " +
-        "and place it at the project root as firebase-service.json.",
+      "Firebase service account not found. Looked in: " +
+        `${SERVICE_ACCOUNT_PATHS.join(", ")}. ` +
+        "On Render, add it under Environment → Secret Files as " +
+        "'firebase-service.json'. Locally, place it at the project root.",
     );
   }
 
   let raw;
   try {
-    raw = fs.readFileSync(SERVICE_ACCOUNT_PATH, "utf-8");
+    raw = fs.readFileSync(filePath, "utf-8");
   } catch (err) {
     throw new Error(`Failed to read firebase-service.json: ${err.message}`);
   }
