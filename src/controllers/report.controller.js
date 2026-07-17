@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import User from "../models/user.model.js";
 import {
   getSubmittedReports,
   getReceivedReports,
@@ -8,6 +7,7 @@ import {
   updateReportStatus,
 } from "../services/report.service.js";
 import { createNotification } from "../services/notification.service.js";
+import { isAdminUser } from "../middleware/auth.middleware.js";
 import { NOTIFICATION_TYPES } from "../utils/constants.js";
 
 function parsePagination(req) {
@@ -16,24 +16,10 @@ function parsePagination(req) {
   return { page, limit };
 }
 
-async function isAdminUser(userId) {
-  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return false;
-  const user = await User.findById(userId).select("roles").lean();
-  return (
-    Array.isArray(user?.roles) &&
-    (user.roles.includes("admin") || user.roles.includes("super_admin"))
-  );
-}
-
-// GET /api/reports/my-submitted?userId=...
+// GET /api/reports/my-submitted  (identity from auth token)
 export const getMySubmittedReports = async (req, res) => {
   try {
-    const { userId } = req.query;
-    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Valid userId is required", code: res.statusCode });
-    }
+    const userId = String(req.userId);
     const { page, limit } = parsePagination(req);
     const result = await getSubmittedReports({
       userId,
@@ -49,15 +35,10 @@ export const getMySubmittedReports = async (req, res) => {
   }
 };
 
-// GET /api/reports/on-my-content?userId=...
+// GET /api/reports/on-my-content  (identity from auth token)
 export const getReportsOnMyContent = async (req, res) => {
   try {
-    const { userId } = req.query;
-    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Valid userId is required", code: res.statusCode });
-    }
+    const userId = String(req.userId);
     const { page, limit } = parsePagination(req);
     const result = await getReceivedReports({
       userId,
@@ -73,20 +54,15 @@ export const getReportsOnMyContent = async (req, res) => {
   }
 };
 
-// GET /api/reports/:id?userId=...
+// GET /api/reports/:id  (identity from auth token)
 export const getReport = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.query;
+    const userId = String(req.userId);
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid report id", code: res.statusCode });
-    }
-    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Valid userId is required", code: res.statusCode });
     }
     const report = await getReportById(id);
     if (!report) {
@@ -98,7 +74,7 @@ export const getReport = async (req, res) => {
     const isParty =
       report.reporterId?._id?.toString() === userId ||
       report.reportedUserId?._id?.toString() === userId;
-    if (!isParty && !(await isAdminUser(userId))) {
+    if (!isParty && !isAdminUser(req.user)) {
       return res
         .status(403)
         .json({ success: false, message: "Access forbidden", code: res.statusCode });
@@ -112,20 +88,15 @@ export const getReport = async (req, res) => {
 };
 
 // DELETE /api/reports/:id — withdraw a report you filed (soft delete only;
-// never removes the original reported content). Body: { userId }
+// never removes the original reported content). Identity from auth token.
 export const deleteReport = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.body;
+    const userId = String(req.userId);
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid report id", code: res.statusCode });
-    }
-    if (!userId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "userId is required", code: res.statusCode });
     }
     const result = await softDeleteOwnReport(id, userId);
     if (result.error) {
@@ -141,12 +112,15 @@ export const deleteReport = async (req, res) => {
   }
 };
 
-// PATCH /api/reports/:id/status — admin moderation only. Body: { userId, status, adminNotes }
+// PATCH /api/reports/:id/status — admin moderation only. Body: { status, adminNotes }
 export const patchReportStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, status, adminNotes } = req.body;
-    if (!(await isAdminUser(userId))) {
+    const { status, adminNotes } = req.body;
+    const userId = String(req.userId);
+    // Admin status is derived from the authenticated user's roles, never a
+    // client-supplied id — the old check let anyone pass a known admin's id.
+    if (!isAdminUser(req.user)) {
       return res
         .status(403)
         .json({ success: false, message: "Admin access required", code: res.statusCode });

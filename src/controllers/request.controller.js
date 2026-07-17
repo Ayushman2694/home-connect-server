@@ -18,13 +18,15 @@ export const getAllRequests = async (req, res) => {
 
 export const createRequest = async (req, res) => {
   try {
-    const { user, status, message } = req.body;
-    const newRequest = new Request({ user, status, message });
-    if (!newRequest) {
-      res
-        .status(400)
-        .json({ success: false, error: "Failed to create request" });
-    }
+    const { message } = req.body;
+    // Identity is taken from the auth token, never the client body — otherwise
+    // anyone could file a verification request on behalf of another user. New
+    // requests always start as "pending"; only admins move them (updateRequestStatus).
+    const newRequest = new Request({
+      user: req.userId,
+      status: "pending",
+      message,
+    });
     await newRequest.save();
     res.status(201).json({ success: true, request: newRequest });
   } catch (error) {
@@ -102,7 +104,8 @@ export const getRequestByType = async (req, res) => {
       request: pendingReq.map((Req) => ({
         _id: Req._id,
         fullName: Req.fullName,
-        flatNumber: Req.flatNumber,
+        // User schema stores this as `flatNo`; keep the response key stable.
+        flatNumber: Req.flatNo,
         societyId: Req.societyId,
         email: Req.email,
         phone: Req.phone,

@@ -14,15 +14,15 @@ import { authenticate } from "../middleware/auth.middleware.js";
 const router = Router();
 
 // Create a new daily service
-router.post("/create", createDailyService);
+router.post("/create", authenticate, createDailyService);
 router.get("/approved/:societyId", getAllApprovedDailyServices);
 router.get("/:helperId", getHelperById);
 router.get("/all/:societyId", getAllDailyServicesBySocietyId);
 router.post("/update/:helperId", authenticate, updateDailyService);
 // Add a review to a daily service
-router.post("/:helperId/review", addDailyServiceReview);
+router.post("/:helperId/review", authenticate, addDailyServiceReview);
 // Report a daily service helper
-router.post("/report/:helperId", reportDailyService);
+router.post("/report/:helperId", authenticate, reportDailyService);
 // Delete a daily service (creator or admin/super_admin — enforced in controller)
 router.delete("/:helperId", authenticate, deleteDailyService);
 

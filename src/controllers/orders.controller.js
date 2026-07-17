@@ -3,13 +3,29 @@ import WholesaleDeal from "../models/wholesale-deal.model.js";
 import Business from "../models/business.model.js";
 import Feed from "../models/feed.model.js";
 import { createNotification } from "../services/notification.service.js";
+import { isAdminUser } from "../middleware/auth.middleware.js";
 import { NOTIFICATION_TYPES } from "../utils/constants.js";
+
+// A user's orders are financial PII — only the owner or an admin may read them.
+// Returns true when the request is allowed to proceed; otherwise sends 403.
+function ensureSelfOrAdmin(req, res, targetUserId) {
+  if (String(targetUserId) === String(req.userId) || isAdminUser(req.user)) {
+    return true;
+  }
+  res.status(403).json({
+    success: false,
+    code: 403,
+    error: "You are not allowed to view these orders",
+  });
+  return false;
+}
 
 // Unified user orders across WholesaleDeal.orders[] and Business.orders[]
 // Query shape is normalized for the client
 export const getUserOrders = async (req, res) => {
   try {
     const { userId } = req.params;
+    if (!ensureSelfOrAdmin(req, res, userId)) return;
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "20", 10), 1),
@@ -493,6 +509,7 @@ export const getEventRegistrations = async (req, res) => {
 export const getUserEventOrders = async (req, res) => {
   try {
     const { userId } = req.params;
+    if (!ensureSelfOrAdmin(req, res, userId)) return;
     const page = Math.max(parseInt(req.query.page || "1", 10), 1);
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "20", 10), 1),
@@ -681,20 +698,7 @@ export const upsertBusinessOrder = async (req, res) => {
       message: "Order upserted",
       orderId: orderDocId,
     });
-
-    // Notify Business Owner of new business order
-    try {
-      const biz = await Business.findById(businessId).select("userId title");
-      if (biz && biz.userId) {
-        await Notification.create({
-          type: "NEW_ORDER",
-          userId: biz.userId.toString(),
-          message: `New order for ${biz.title}: Qty ${quantity}, Amount ${amount}`,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to create notification for business order:", err);
-    }
+    // (owner notification already sent above via createNotification)
   } catch (error) {
     console.error("Error upserting business order:", error);
     return res

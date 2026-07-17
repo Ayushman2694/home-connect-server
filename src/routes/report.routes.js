@@ -6,19 +6,18 @@ import {
   deleteReport,
   patchReportStatus,
 } from "../controllers/report.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// Matches the rest of this API's trust model (userId passed explicitly by
-// the client, e.g. reportFeed/reportComment/reportDeal) rather than relying
-// on the `authenticate` Bearer-token middleware, which none of the other
-// report-writing routes use — mixing the two here caused reports to be
-// written successfully but to silently fail to load on the "My Reports"
-// screen whenever the bearer token wasn't present/valid for any reason.
-router.get("/my-submitted", getMySubmittedReports);
-router.get("/on-my-content", getReportsOnMyContent);
-router.get("/:id", getReport);
-router.delete("/:id", deleteReport);
-router.patch("/:id/status", patchReportStatus);
+// Every route here reads or mutates moderation data tied to a specific user.
+// Identity MUST come from the verified Bearer token (req.userId / req.user),
+// not a client-supplied userId — otherwise anyone could read others' reports
+// or, by borrowing a known admin id, moderate reports without a session.
+router.get("/my-submitted", authenticate, getMySubmittedReports);
+router.get("/on-my-content", authenticate, getReportsOnMyContent);
+router.get("/:id", authenticate, getReport);
+router.delete("/:id", authenticate, deleteReport);
+router.patch("/:id/status", authenticate, patchReportStatus);
 
 export default router;

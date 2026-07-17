@@ -16,21 +16,21 @@ import { authenticate } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 // Admin device token registration
-router.post("/admin/register-token", registerAdminToken);
+router.post("/admin/register-token", authenticate, registerAdminToken);
 
-// User device token registration
-router.post("/user/register-token", registerUserToken);
+// User device token registration (userId derived from the auth token —
+// accepting it from the body let anyone hijack another user's pushes)
+router.post("/user/register-token", authenticate, registerUserToken);
 
 // User clicks reminder
-router.post("/reminder", createReminder);
+router.post("/reminder", authenticate, createReminder);
 
 // Admin-authored broadcast — society-wide or to selected users
 router.post("/announcement", authenticate, sendAnnouncement);
 
-// Developer test endpoint — send a real FCM push to a user by mobile number
-// No auth guard by design so developers can test without a valid session token.
-// Remove or guard with authenticate in production if needed.
-router.post("/test", testPushNotification);
+// Developer test endpoint — send a real FCM push to a user by mobile number.
+// Guarded: an open push trigger lets anyone spam notifications to any number.
+router.post("/test", authenticate, testPushNotification);
 
 // Notification list / read-state (scoped to the authenticated user)
 router.get("/", authenticate, getNotifications);

@@ -19,10 +19,12 @@ router.post("/sign", authenticate, signUpload);
 
 /**
  * @route   POST /api/media/test-sign
- * @desc    Test endpoint without authentication for debugging
- * @access  Public (temporary)
+ * @desc    Test endpoint for debugging — now authenticated. An open signing
+ *          endpoint let anyone mint valid Cloudinary upload signatures and
+ *          upload to your account at your expense.
+ * @access  Private
  */
-router.post("/test-sign", signUpload);
+router.post("/test-sign", authenticate, signUpload);
 
 /**
  * @route   DELETE /api/media/delete

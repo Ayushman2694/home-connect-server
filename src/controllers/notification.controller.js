@@ -43,7 +43,10 @@ export const registerAdminToken = async (req, res) => {
 
 export const registerUserToken = async (req, res) => {
   try {
-    const { token, userId } = req.body;
+    const { token } = req.body;
+    // Bind the device token to the *authenticated* user — trusting a
+    // body-supplied userId allowed push-notification hijacking.
+    const userId = req.userId || req.body.userId;
     if (!token || !userId)
       return res.status(400).json({ error: "Token and userId are required" });
 

@@ -191,6 +191,10 @@ export const getAllPendingContent = async (req, res) => {
         )
         .lean(),
 
+      // Note: userId is intentionally left unpopulated — transformDataForDisplay
+      // only needs the raw owner ObjectId, and populate() nulls out the field
+      // entirely when the referenced user no longer exists (orphaned owner),
+      // which broke the admin approve/reject flow for such records.
       Business.find({
         societyId: societyObjectId,
         "verificationStatus.status": pendingStatus,
@@ -198,7 +202,6 @@ export const getAllPendingContent = async (req, res) => {
         .select(
           "title category phone email profilePhotoUrl userId societyId verificationStatus createdAt completeAddress description gstNumber businessPhone",
         )
-        .populate("userId", "fullName phone")
         .lean(),
 
       WholesaleDeal.find({
@@ -208,7 +211,6 @@ export const getAllPendingContent = async (req, res) => {
         .select(
           "title category phone price minimumOrderQty userId societyId verificationStatus createdAt",
         )
-        .populate("userId", "fullName phone")
         .lean(),
 
       DailyService.find({

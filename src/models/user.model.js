@@ -150,6 +150,8 @@ const UserSchema = new mongoose.Schema(
         updatedAt: { type: Date, default: Date.now },
       },
     ],
+    // Set on every successful OTP login (auth.controller.js verifyOtp)
+    lastLogin: { type: Date, default: null },
   },
   {
     timestamps: true,

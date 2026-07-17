@@ -25,17 +25,19 @@ router.get("/getfeeds/:societyId", getFeedsBySocietyId);
 router.get("/getFeed/:feedId", getFeedById);
 router.get("/comments/:feedId", getFeedComments);
 router.get("/user/:userId", getFeedsByUserId);
-router.post("/create", createFeeds);
+// All mutating routes require authentication — previously anyone could
+// create/edit posts, vote, RSVP or report without a token.
+router.post("/create", authenticate, createFeeds);
 router.post("/comment/:feedId", authenticate, addComment);
 router.delete("/comment/:feedId/:commentId", authenticate, deleteComment);
-router.post("/vote/:feedId", voteOnPoll);
-router.post("/rsvp/:feedId", addOrUpdateRSVP);
-router.patch("/rsvp/:feedId/verify/:userId", updateRSVPVerificationStatus);
-router.post("/report/:feedId", reportFeed);
-router.post("/review/:feedId", addReview);
-router.delete("/rsvp/:feedId", removeRSVP);
-router.patch("/:feedId/like", toggleLike);
-router.patch("/update/:feedId", updateFeed);
+router.post("/vote/:feedId", authenticate, voteOnPoll);
+router.post("/rsvp/:feedId", authenticate, addOrUpdateRSVP);
+router.patch("/rsvp/:feedId/verify/:userId", authenticate, updateRSVPVerificationStatus);
+router.post("/report/:feedId", authenticate, reportFeed);
+router.post("/review/:feedId", authenticate, addReview);
+router.delete("/rsvp/:feedId", authenticate, removeRSVP);
+router.patch("/:feedId/like", authenticate, toggleLike);
+router.patch("/update/:feedId", authenticate, updateFeed);
 router.delete("/:feedId", authenticate, deleteFeed);
 
 export default router;

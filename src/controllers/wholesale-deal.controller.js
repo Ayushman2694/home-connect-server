@@ -168,6 +168,20 @@ export const updateDeal = async (req, res) => {
       });
     }
 
+    // Only the deal owner or an admin/super_admin may update a deal.
+    const requesterRoles = req.user?.roles || [];
+    const isModerator =
+      requesterRoles.includes(USER_ROLES.ADMIN) ||
+      requesterRoles.includes(USER_ROLES.SUPER_ADMIN);
+    const isOwner = deal.userId && String(deal.userId) === String(req.userId);
+    if (!isModerator && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "You are not allowed to update this deal",
+      });
+    }
+
     // Apply updates
     Object.assign(deal, updateData);
     await deal.save();

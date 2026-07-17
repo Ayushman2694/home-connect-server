@@ -5,7 +5,9 @@ const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   quantity: { type: Number, required: true },
   amount: { type: Number, required: true },
-  dealerName: { type: String, required: true },
+  // Not required — orders are created with `dealerName: req.body.dealerName || ""`
+  // and an empty string fails `required`, which broke order placement.
+  dealerName: { type: String, default: "" },
   status: {
     type: String,
     enum: ["pending", "approved", "rejected", "confirmed", "cancelled", "delivered"],
@@ -132,6 +134,10 @@ const WholesaleDealSchema = new mongoose.Schema(
 // Add indexes for optimized queries by userId and societyId
 WholesaleDealSchema.index({ userId: 1 });
 WholesaleDealSchema.index({ societyId: 1 });
+// Efficiently find orders by user across deals and sort by time.
+// (Must be declared BEFORE mongoose.model() — indexes added after model
+// compilation are silently ignored.)
+WholesaleDealSchema.index({ "orders.userId": 1, "orders.orderedAt": -1 });
 
 // Pre-save middleware to automate deal lifecycle logic
 WholesaleDealSchema.pre("save", function (next) {
@@ -209,7 +215,3 @@ const deadlineDate = new Date(deal.orderDeadlineDate);
 
 const WholesaleDeal = mongoose.model("WholesaleDeal", WholesaleDealSchema);
 export default WholesaleDeal;
-
-// Index to efficiently find orders by user across deals and sort by time
-// Helps queries like: db.wholesaledeals.find({ 'orders.userId': <uid> })
-WholesaleDealSchema.index({ "orders.userId": 1, "orders.orderedAt": -1 });
