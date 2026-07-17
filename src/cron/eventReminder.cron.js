@@ -5,10 +5,23 @@ import { createNotificationForMany } from "../services/notification.service.js";
 
 const REMINDER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-function parseEventDateTime(feed) {
-  const raw = feed.eventTime ? `${feed.eventDate} ${feed.eventTime}` : feed.eventDate;
+// Feed schema stores event times as eventStartDate/eventStartTime and
+// eventEndDate/eventEndTime (there is no eventDate/eventTime field — reading
+// those meant reminders never fired).
+function parseDateTime(date, time) {
+  if (!date) return null;
+  const raw = time ? `${date} ${time}` : date;
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseEventStart(feed) {
+  return parseDateTime(feed.eventStartDate, feed.eventStartTime);
+}
+
+function parseEventEnd(feed) {
+  // Fall back to the start when no end date is set.
+  return parseDateTime(feed.eventEndDate, feed.eventEndTime) || parseEventStart(feed);
 }
 
 async function processEventReminders() {
@@ -19,13 +32,15 @@ async function processEventReminders() {
   });
 
   for (const event of events) {
-    const eventDateTime = parseEventDateTime(event);
-    if (!eventDateTime) continue;
+    const eventStart = parseEventStart(event);
+    if (!eventStart) continue;
 
     const registrantIds = (event.rsvps || []).map((r) => r.user);
     if (registrantIds.length === 0) continue;
 
-    const msUntilEvent = eventDateTime.getTime() - now;
+    const msUntilEvent = eventStart.getTime() - now;
+    const eventEnd = parseEventEnd(event);
+    const msUntilEnd = eventEnd ? eventEnd.getTime() - now : msUntilEvent;
 
     if (!event.reminderSent && msUntilEvent > 0 && msUntilEvent <= REMINDER_WINDOW_MS) {
       try {
@@ -43,7 +58,8 @@ async function processEventReminders() {
       }
     }
 
-    if (!event.completedNotified && msUntilEvent <= 0) {
+    // Completed = the event has ended (not merely started)
+    if (!event.completedNotified && msUntilEnd <= 0) {
       try {
         await createNotificationForMany({
           title: "Event Completed",

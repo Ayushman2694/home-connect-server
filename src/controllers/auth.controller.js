@@ -4,7 +4,7 @@ import { generateToken, verifyToken } from "../utils/generateToken.js";
 
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
+  process.env.TWILIO_AUTH_TOKEN,
 );
 
 export const sendOtp = async (req, res) => {
@@ -44,9 +44,9 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ error: "Invalid input" });
     }
 
-    // --- OTP check (currently using master OTP for testing) ---
-    const masterOTP = "123456";
-    if (code != masterOTP) {
+    // --- OTP check (dev mode: master OTP from env, no Twilio verificationCheck) ---
+    const masterOTP = process.env.MASTER_OTP;
+    if (!masterOTP || code != masterOTP) {
       return res.status(400).json({ error: "Invalid code" });
     }
 
@@ -58,14 +58,14 @@ export const verifyOtp = async (req, res) => {
 
     if (!user) {
       // 🔹 Create new user
+      // Only set schema-backed fields; isAddressVerified defaults to
+      // { status: "pending" } via the schema — passing a string here would
+      // throw ObjectExpectedError and break new-user registration.
       user = new User({
         phone: e164,
         fullName: "", // optional, can be filled later
-        profilePic: null,
-        isAddressVerified: "pending",
-        roles: ["guest"], // or ["guest"] if you want
+        roles: ["guest"],
         societyId: null,
-        businessIds: null,
         tower: null,
         lastLogin: new Date(),
       });
@@ -95,7 +95,6 @@ export const verifyOtp = async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 60); // 60 days from now
 
-    console.log("Generated Token:", token);
     return res.json({
       success: true,
       code: res.statusCode,

@@ -20,15 +20,15 @@ import { USER_ROLES } from "../utils/constants.js";
 const router = Router();
 
 // Create a new business
-router.post("/", createBusiness);
+router.post("/", authenticate, createBusiness);
 router.get("/fetch/:societyId", fetchBusinessBySocietyId);
 router.get("/user/:userId", getBusinessesByUserId);
 router.get("/product/:productId", getProductById);
 router.get("/all/:societyId", getAllBusinesses);
 router.get("/:businessId/catalogue", authenticate, getCatalogueByBusinessId);
 
-// Update business
-router.patch("/:businessId", updateBusiness);
+// Update business (owner or admin — enforced in the controller)
+router.patch("/:businessId", authenticate, updateBusiness);
 
 // Add catalogue item to a business
 router.post("/:businessId/catalogue", authenticate, addCatalogueItem);

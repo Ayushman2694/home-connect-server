@@ -122,8 +122,11 @@ export const createDailyService = async (req, res) => {
       }),
     });
   } catch (error) {
-    if (error) {
-      console.error("Validation errors:", error.errors);
+    console.error("Error in createDailyService:", error);
+    // Only ValidationError has `.errors`; treating every error as a
+    // validation error crashed here (Object.values(undefined)) and left
+    // the request hanging with no response.
+    if (error.name === "ValidationError" && error.errors) {
       return res.status(400).json({
         success: false,
         code: res.statusCode,
@@ -131,6 +134,11 @@ export const createDailyService = async (req, res) => {
         details: Object.values(error.errors).map((err) => err.message),
       });
     }
+    return res.status(500).json({
+      success: false,
+      code: res.statusCode,
+      error: "Error creating daily service",
+    });
   }
 };
 

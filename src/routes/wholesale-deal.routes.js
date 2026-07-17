@@ -19,9 +19,9 @@ router.get("/getDeal/:dealId", getDealById);
 router.get("/getDealByUser/:userId", getDealsByUserId);
 router.get("/updateExpired/:societyId", updateExpiredDeals);
 router.get("/posting-accounts/:userId", getDealPostingAccountsByUserId);
-router.post("/create", createWholesaleDeal);
-router.post("/report/:dealId", reportDeal);
-router.patch("/:dealId", updateDeal);
+router.post("/create", authenticate, createWholesaleDeal);
+router.post("/report/:dealId", authenticate, reportDeal);
+router.patch("/:dealId", authenticate, updateDeal);
 router.delete("/:dealId", authenticate, removeDeal);
 
 export default router;

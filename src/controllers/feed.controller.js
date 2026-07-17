@@ -3,7 +3,17 @@ import User from "../models/user.model.js";
 import CommentReport from "../models/commentReport.model.js";
 import mongoose from "mongoose";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
-import { VERIFICATION_STATUS, USER_ROLES } from "../utils/constants.js";
+import {
+  VERIFICATION_STATUS,
+  USER_ROLES,
+  NOTIFICATION_TYPES,
+} from "../utils/constants.js";
+import {
+  createNotification,
+  createNotificationForMany,
+  getSocietyUserIds,
+} from "../services/notification.service.js";
+import { logReport } from "../services/report.service.js";
 
 const COMMENT_USER_FIELDS = "fullName profilePhotoUrl";
 const MAX_COMMENT_LENGTH = 1000;
@@ -27,10 +37,46 @@ const serializeComment = (comment) => ({
   createdAt: comment.createdAt,
 });
 
+// Fields a client is allowed to set when creating a feed. Everything else
+// (user, society, likes, votes, rsvps, comments, report, totalReportCount,
+// registeredParticipants, reminderSent/completedNotified) is server-controlled
+// and must never be mass-assigned from the request body.
+const CREATABLE_FEED_FIELDS = [
+  "title",
+  "type",
+  "description",
+  "content",
+  "images",
+  "flatNo",
+  "towerName",
+  "price",
+  "quantity",
+  "options", // poll
+  "eventStartDate",
+  "eventStartTime",
+  "eventEndDate",
+  "eventEndTime",
+  "regDeadline",
+  "maxParticipants",
+  "minParticipants",
+  "location",
+  "eventDetails",
+];
+
 // Create a new feed (post, poll, event)
 export const createFeeds = async (req, res) => {
   try {
-    const feed = await Feed.create(req.body);
+    // Whitelist client fields, then stamp author + society from the auth token.
+    // Taking `user` from the body let anyone post as someone else; taking
+    // `society` from the body let a member post into another society's feed.
+    const payload = {};
+    for (const key of CREATABLE_FEED_FIELDS) {
+      if (req.body[key] !== undefined) payload[key] = req.body[key];
+    }
+    payload.user = req.userId;
+    payload.society = req.user?.societyId || req.body.society;
+
+    const feed = await Feed.create(payload);
     res.status(201).json({ success: true, feed, code: res.statusCode });
 
     if (feed.society) {
@@ -375,6 +421,29 @@ export const updateFeed = async (req, res) => {
     const { feedId } = req.params;
     const updates = req.body;
 
+    // Only the author or an admin/super_admin may edit a feed.
+    const existing = await Feed.findById(feedId).select("user");
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "Feed not found",
+        code: res.statusCode,
+      });
+    }
+    const requesterRoles = req.user?.roles || [];
+    const isModerator =
+      requesterRoles.includes(USER_ROLES.ADMIN) ||
+      requesterRoles.includes(USER_ROLES.SUPER_ADMIN);
+    const isOwner =
+      existing.user && String(existing.user) === String(req.userId);
+    if (!isModerator && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to update this post",
+        code: 403,
+      });
+    }
+
     // Fields that should not be updated
     const notAllowedUpdates = [
       "_id",
@@ -531,7 +600,8 @@ export const deleteFeed = async (req, res) => {
   try {
     const { feedId } = req.params;
 
-    const feed = await Feed.findById(feedId).select("user");
+    // type/rsvps/title are needed below for the event-cancellation notice
+    const feed = await Feed.findById(feedId).select("user type rsvps title");
     if (!feed)
       return res
         .status(404)

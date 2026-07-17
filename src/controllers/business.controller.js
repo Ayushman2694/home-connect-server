@@ -1,7 +1,13 @@
 import mongoose from "mongoose";
 import Business from "../models/business.model.js";
 import User from "../models/user.model.js";
-import { VERIFICATION_STATUS, NOTIFICATION_TYPES } from "../utils/constants.js";
+import Feed from "../models/feed.model.js";
+import WholesaleDeal from "../models/wholesale-deal.model.js";
+import {
+  VERIFICATION_STATUS,
+  NOTIFICATION_TYPES,
+  WHOLESALE_DEAL_STATUS,
+} from "../utils/constants.js";
 import { getUserReportsToday } from "../utils/dailyReportLimit.js";
 import {
   createNotification,
@@ -159,8 +165,31 @@ export const updateBusiness = async (req, res) => {
     const { businessId } = req.params;
     const updates = req.body;
 
+    // Only the business owner or an admin may update it.
+    const existing = await Business.findById(businessId).select("userId");
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        code: 404,
+        error: "Business not found",
+      });
+    }
+    const requesterIsAdmin = isAdminUser(req.user);
+    const isOwner =
+      existing.userId && String(existing.userId) === String(req.userId);
+    if (!requesterIsAdmin && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        code: 403,
+        error: "You are not allowed to update this business",
+      });
+    }
+
     // Define fields that are NOT allowed to be updated
     const notAllowedUpdates = ["_id", "createdAt", "updatedAt", "userId"];
+    // Owners cannot self-approve — verification changes go through the
+    // dedicated admin /status endpoint.
+    if (!requesterIsAdmin) notAllowedUpdates.push("verificationStatus");
 
     // Remove not allowed fields from updates
     const updateData = Object.keys(updates)
@@ -236,7 +265,12 @@ export const updateBusiness = async (req, res) => {
  */
 export const getAllBusinesses = async (req, res) => {
   try {
-    const businesses = await Business.find()
+    // Route is /all/:societyId — scope results to the society when provided
+    // (previously the param was ignored and every business was returned).
+    const { societyId } = req.params;
+    const filter =
+      societyId && mongoose.isValidObjectId(societyId) ? { societyId } : {};
+    const businesses = await Business.find(filter)
       .populate("userId", "fullName phone profilePhotoUrl flatNumber roles")
       .select("-orders -reviews -report") // removed -catalogue
       .lean();
@@ -365,6 +399,23 @@ export const addCatalogueItem = async (req, res) => {
     const { businessId } = req.params;
     const catalogueData = req.body;
 
+    // Only the business owner or an admin may modify the catalogue.
+    const owned = await Business.findById(businessId).select("userId");
+    if (!owned) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Business not found" });
+    }
+    if (
+      !isAdminUser(req.user) &&
+      String(owned.userId) !== String(req.userId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "You are not allowed to modify this catalogue",
+      });
+    }
+
     // Use atomic $push for efficiency
     const business = await Business.findByIdAndUpdate(
       businessId,
@@ -415,6 +466,23 @@ export const updateCatalogueItem = async (req, res) => {
   try {
     const { businessId, catalogueId } = req.params;
     const updateData = req.body;
+
+    // Only the business owner or an admin may modify the catalogue.
+    const owned = await Business.findById(businessId).select("userId");
+    if (!owned) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Business not found" });
+    }
+    if (
+      !isAdminUser(req.user) &&
+      String(owned.userId) !== String(req.userId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "You are not allowed to modify this catalogue",
+      });
+    }
 
     // Use atomic update with positional operator
     const business = await Business.findOneAndUpdate(
@@ -792,6 +860,41 @@ export const deleteBusiness = async (req, res) => {
         code: 403,
         error: "You are not allowed to delete this business",
       });
+    }
+
+    // ── Guard: block deletion while the owner still has active deals/events ──
+    // These must be closed first so participants/buyers aren't left with
+    // dangling commitments once the business disappears.
+    if (business.userId) {
+      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+      const [activeDeals, activeEvents] = await Promise.all([
+        WholesaleDeal.find({
+          userId: business.userId,
+          isDealActive: true,
+          dealStatus: { $ne: WHOLESALE_DEAL_STATUS.CANCELLED },
+        })
+          .select("_id title dealStatus")
+          .lean(),
+        Feed.find({
+          user: business.userId,
+          type: "event",
+          eventEndDate: { $nin: [null, ""], $gte: today },
+        })
+          .select("_id title eventEndDate")
+          .lean(),
+      ]);
+
+      if (activeDeals.length > 0 || activeEvents.length > 0) {
+        return res.status(409).json({
+          success: false,
+          code: 409,
+          message:
+            "Please close your active deals and events before deleting your business.",
+          activeDeals,
+          activeEvents,
+        });
+      }
     }
 
     await Business.findByIdAndDelete(businessId);

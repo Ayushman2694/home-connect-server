@@ -14,7 +14,6 @@ import { Notification } from "../models/notification.model.js";
 import {
   VERIFICATION_STATUS,
   USER_ROLES,
-  WHOLESALE_DEAL_STATUS,
   NOTIFICATION_TYPES,
 } from "../utils/constants.js";
 import { isAdminUser } from "../middleware/auth.middleware.js";
@@ -37,7 +36,8 @@ export const createUser = async (req, res) => {
 
     const existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res.status(404).json({
+      // 409 Conflict — 404 was semantically wrong for "already exists"
+      return res.status(409).json({
         message: "User already exists",
         userId: existingUser._id,
       });
@@ -45,6 +45,24 @@ export const createUser = async (req, res) => {
 
     if (!residentType) {
       return res.status(400).json({ message: "Resident type is required" });
+    }
+
+    // Non-admin requesters cannot assign privileged roles or pre-approve
+    // themselves — otherwise anyone could register straight as admin.
+    const requesterIsAdmin = isAdminUser(req.user);
+    let safeRoles = roles;
+    let safeVerification = isAddressVerified;
+    if (!requesterIsAdmin) {
+      const allowedSelfRoles = [
+        USER_ROLES.GUEST,
+        USER_ROLES.RESIDENT,
+        USER_ROLES.BUSINESS,
+      ];
+      safeRoles = (Array.isArray(roles) ? roles : []).filter((r) =>
+        allowedSelfRoles.includes(r),
+      );
+      if (safeRoles.length === 0) safeRoles = [USER_ROLES.GUEST];
+      safeVerification = { status: VERIFICATION_STATUS.PENDING };
     }
 
     const sanitizedEmail =
@@ -55,14 +73,14 @@ export const createUser = async (req, res) => {
     const newUser = new User({
       fullName,
       phone,
-      roles,
+      roles: safeRoles,
       profilePhotoUrl,
       societyId,
       flatNo,
       tower,
       residentType,
       residentProofUrls,
-      isAddressVerified,
+      isAddressVerified: safeVerification,
       ...(sanitizedEmail ? { email: sanitizedEmail } : {}),
     });
 
@@ -108,6 +126,23 @@ export const createUser = async (req, res) => {
 export const getAllUserBySocietyId = async (req, res) => {
   try {
     const { societyId } = req.params;
+
+    // This returns a full member directory (names, phones, flats). Admins may
+    // query any society; everyone else is restricted to their own society, so
+    // a guest/resident can't scrape other societies' residents by guessing ids.
+    if (!isAdminUser(req.user)) {
+      const sameSociety =
+        req.user?.societyId &&
+        String(req.user.societyId) === String(societyId);
+      if (!sameSociety) {
+        return res.status(403).json({
+          success: false,
+          code: 403,
+          message: "You can only view members of your own society",
+        });
+      }
+    }
+
     // Only return users with 'business' or 'resident' in roles and matching societyId
     const query = {
       roles: { $in: ["business", "resident"] },
@@ -293,6 +328,24 @@ export const getUserById = async (req, res) => {
         success: false,
         error: "User not found",
       });
+    }
+
+    // Contact details and moderation data are private. The owner and admins get
+    // the full record; everyone else gets a public profile with PII stripped
+    // (so viewing another resident's profile no longer leaks their phone/email/
+    // address or who has reported them).
+    const isSelfOrAdmin =
+      String(req.userId) === String(userId) || isAdminUser(req.user);
+    if (!isSelfOrAdmin) {
+      const publicUser = user.toObject();
+      delete publicUser.phone;
+      delete publicUser.email;
+      delete publicUser.completeAddress;
+      delete publicUser.report;
+      delete publicUser.totalReportCount;
+      delete publicUser.orders;
+      delete publicUser.lastLogin;
+      return res.json(publicUser);
     }
 
     return res.json(user);
@@ -606,41 +659,30 @@ export const removeUser = async (req, res) => {
         .json({ success: false, code: 404, message: "User not found" });
     }
 
-    // ── Guard: block deletion while the user still has active deals/events ──
-    // The user must close (cancel) these first so participants/buyers aren't
-    // left with dangling commitments.
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    // ── Guard: block resident deletion while a business account still exists ──
+    // Deleting the resident first would orphan the business (and its active
+    // deals/events); the owner must delete the business account first. That
+    // deletion enforces its own active-deals/events guard.
+    const ownedBusinesses = await Business.find({ userId })
+      .select("_id title category")
+      .lean();
 
-    const [activeDeals, activeEvents] = await Promise.all([
-      // A deal is "active" while its lifecycle keeps isDealActive true
-      // (ACTIVE / UNLOCKING / UNLOCKED / CLOSING_SOON / COMING_SOON).
-      WholesaleDeal.find({
-        userId,
-        isDealActive: true,
-        dealStatus: { $ne: WHOLESALE_DEAL_STATUS.CANCELLED },
-      })
-        .select("_id title dealStatus")
-        .lean(),
-      // An event is "active" while it has a future/ongoing end date.
-      Feed.find({
-        user: userId,
-        type: "event",
-        eventEndDate: { $nin: [null, ""], $gte: today },
-      })
-        .select("_id title eventEndDate")
-        .lean(),
-    ]);
-
-    if (activeDeals.length > 0 || activeEvents.length > 0) {
+    if (ownedBusinesses.length > 0) {
       return res.status(409).json({
         success: false,
         code: 409,
         message:
-          "Please close your active deals and events before deleting your account.",
-        activeDeals,
-        activeEvents,
+          "Please delete your business account before deleting your resident account.",
+        reason: "BUSINESS_EXISTS",
+        businesses: ownedBusinesses,
       });
     }
+
+    // ── Active orders are informational only — they never block deletion ──
+    const activeOrderStatuses = ["pending", "confirmed", "approved"];
+    const activeOrders = (user.orders || []).filter((o) =>
+      activeOrderStatuses.includes(o.status),
+    );
 
     // Notify the member only when an admin removes them (self-deletion is silent).
     if (!isSelf) {
@@ -688,6 +730,7 @@ export const removeUser = async (req, res) => {
       feedsDeleted: feedResult.deletedCount,
       businessesDeleted: businessResult.deletedCount,
       dealsDeleted: dealResult.deletedCount,
+      activeOrdersAtDeletion: activeOrders.length,
     });
   } catch (error) {
     console.error("Error in removeUser:", error);
@@ -707,6 +750,15 @@ export const getUserOrders = async (req, res) => {
         success: false,
         message: "Invalid userId",
         code: res.statusCode,
+      });
+    }
+
+    // Orders are private — only the owner or an admin may view them.
+    if (String(req.userId) !== String(userId) && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to view these orders",
+        code: 403,
       });
     }
 
@@ -782,12 +834,15 @@ export const getUserOrders = async (req, res) => {
 export const reportUser = async (req, res) => {
   try {
     const { userId: reportedUserId } = req.params;
-    const { userId, reason } = req.body;
+    const { reason } = req.body;
+    // Reporter identity comes from the authenticated token, not the body —
+    // trusting body.userId let anyone file reports under another user's name.
+    const userId = String(req.userId);
 
-    if (!userId || !reason) {
+    if (!reason) {
       return res.status(400).json({
         success: false,
-        message: "userId and reason are required",
+        message: "reason is required",
         code: res.statusCode,
       });
     }

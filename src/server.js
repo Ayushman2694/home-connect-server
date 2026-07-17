@@ -21,6 +21,10 @@ import { startEventReminderCron } from "./cron/eventReminder.cron.js";
 dotenv.config();
 
 const app = express();
+// Render (and most PaaS) put the app behind a reverse proxy, so the client IP
+// arrives in X-Forwarded-For. Trust one proxy hop so express-rate-limit keys on
+// the real client IP instead of the proxy's.
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
